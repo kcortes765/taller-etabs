@@ -1,49 +1,60 @@
 """
-00_test_api.py — Diagnostico: conectar a ETABS abierto y verificar metodos.
+00_test_api.py — Diagnostico: conectar a ETABS 19 y verificar metodos API.
+USO: Abrir ETABS 19 (sin v21), luego: python 00_test_api.py
 """
 import comtypes.client
 import sys
+import os
+
+ETABS19_EXE = r"C:\Program Files\Computers and Structures\ETABS 19\ETABS.exe"
 
 
 def connect():
-    """Conectar al ETABS que esta corriendo."""
-    # Metodo 1: GetActiveObject (conecta al ETABS abierto)
+    """Conectar al ETABS 19 que esta corriendo."""
+
+    # Metodo 1 (PRINCIPAL): Helper.GetObject con ruta ETABS 19
+    try:
+        helper = comtypes.client.CreateObject('ETABSv1.Helper')
+        import comtypes.gen.ETABSv1 as ETABSv1
+        helper = helper.QueryInterface(ETABSv1.cHelper)
+        obj = helper.GetObject(ETABS19_EXE)
+        m = obj.SapModel
+        m.GetPresentUnits()  # test
+        print("[OK] Conectado via Helper.GetObject(ETABS19)")
+        return m
+    except Exception as e:
+        print(f"  Helper.GetObject: {e}")
+
+    # Metodo 2: GetActiveObject
     try:
         obj = comtypes.client.GetActiveObject('CSI.ETABS.API.ETABSObject')
         m = obj.SapModel
-        m.GetPresentUnits()  # test rapido
+        m.GetPresentUnits()
         print("[OK] Conectado via GetActiveObject")
         return m
     except Exception as e:
         print(f"  GetActiveObject: {e}")
 
-    # Metodo 2: Helper
+    # Metodo 3: Helper.CreateObject (lanza nueva instancia v19)
     try:
         helper = comtypes.client.CreateObject('ETABSv1.Helper')
-        obj = helper.CreateObjectProgID('CSI.ETABS.API.ETABSObject')
+        import comtypes.gen.ETABSv1 as ETABSv1
+        helper = helper.QueryInterface(ETABSv1.cHelper)
+        obj = helper.CreateObject(ETABS19_EXE)
         m = obj.SapModel
         m.GetPresentUnits()
-        print("[OK] Conectado via Helper")
+        print("[OK] Conectado via Helper.CreateObject(ETABS19)")
         return m
     except Exception as e:
-        print(f"  Helper: {e}")
+        print(f"  Helper.CreateObject: {e}")
 
-    # Metodo 3: CreateObject directo
-    try:
-        obj = comtypes.client.CreateObject('CSI.ETABS.API.ETABSObject')
-        m = obj.SapModel
-        m.GetPresentUnits()
-        print("[OK] Conectado via CreateObject")
-        return m
-    except Exception as e:
-        print(f"  CreateObject: {e}")
-
-    print("[FAIL] No se pudo conectar a ETABS")
+    print("\n[FAIL] No se pudo conectar a ETABS 19")
+    print("Ejecutar: python diag.py  (diagnostico completo)")
     return None
 
 
 def test():
-    print("=== TEST API ETABS ===\n")
+    print("=== TEST API ETABS 19 ===\n")
 
     m = connect()
     if m is None:
@@ -87,7 +98,7 @@ def test():
     except Exception as e:
         print(f"[FAIL] PropMaterial.SetMaterial: {e}")
 
-    # SetWall (5 params)
+    # SetWall
     try:
         ret = m.PropArea.SetWall('TW', 1, 1, 'TM', 0.30)
         print(f"[OK] PropArea.SetWall(5p): ret={ret}")
