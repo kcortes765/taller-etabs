@@ -8,9 +8,22 @@ from config import LOSA_NAME
 def define_diaphragm(m):
     set_units_tonf_m(m)
 
-    # Definir diafragma rigido (SemiRigid=False → rigido)
-    ret = m.Diaphragm.SetDiaphragm('DR', False)
-    print(f"  Diaphragm 'DR': ret={ret}")
+    # Definir diafragma rigido — probar multiples APIs
+    ret = None
+    # Metodo 1: m.Diaphragm.SetDiaphragm (v21+)
+    if m.Diaphragm is not None:
+        try:
+            ret = m.Diaphragm.SetDiaphragm('DR', False)
+            print(f"  Diaphragm.SetDiaphragm 'DR': ret={ret}")
+        except Exception as e:
+            print(f"  Diaphragm.SetDiaphragm fallo: {e}")
+            ret = None
+
+    # Metodo 2: m.AreaObj.SetDiaphragm directo (sin crear diafragma explicitamente)
+    # En v19, el diafragma "D1" existe por defecto tras File.NewBlank
+    if ret is None or ret != 0:
+        print("  Usando diafragma por defecto (asignacion directa a losas)")
+        # No necesitamos crear el diafragma, solo asignar 'D1' a las losas
 
     # Asignar a todas las losas
     result = m.AreaObj.GetNameList()
@@ -28,12 +41,15 @@ def define_diaphragm(m):
             continue
 
         if LOSA_NAME in prop_name:
-            try:
-                ret = m.AreaObj.SetDiaphragm(area_name, 'DR')
-                if ret == 0:
-                    count += 1
-            except:
-                pass
+            # Probar con 'DR' primero, luego 'D1' (default v19)
+            for dname in ['DR', 'D1']:
+                try:
+                    ret = m.AreaObj.SetDiaphragm(area_name, dname)
+                    if ret == 0:
+                        count += 1
+                        break
+                except Exception:
+                    continue
 
     print(f"[OK] Diafragma rigido asignado a {count} losas")
 
