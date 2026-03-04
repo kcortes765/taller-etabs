@@ -74,36 +74,22 @@ def get_model(retries=5, wait=5):
 
     for attempt in range(1, retries + 1):
 
-        # --- Metodo 1: CreateObject ---
-        # Crea/conecta a la version registrada (generalmente v21).
-        # El one-liner proba que esto funciona.
-        try:
-            obj = comtypes.client.CreateObject('CSI.ETABS.API.ETABSObject')
-            m = obj.SapModel
-            if _test_model(m):
-                m.SetPresentUnits(TONF_M_C)
-                _etabs_obj = obj  # KEEP ALIVE
-                _model = m
-                print("[OK] ETABS conectado via CreateObject (tonf_m_C)")
-                return _model
-        except Exception as e:
-            last_err = e
-
-        # --- Metodo 2: GetActiveObject ---
-        # Conecta a ETABS ya corriendo (si se registro en ROT).
+        # --- Metodo 1: GetActiveObject (PRIORITARIO) ---
+        # Conecta al ETABS ya corriendo. No spawna procesos extra.
+        # Confirmado que funciona en PC lab con comtypes.gen limpio.
         try:
             obj = comtypes.client.GetActiveObject('CSI.ETABS.API.ETABSObject')
             m = obj.SapModel
             if _test_model(m):
                 m.SetPresentUnits(TONF_M_C)
-                _etabs_obj = obj
+                _etabs_obj = obj  # KEEP ALIVE
                 _model = m
                 print("[OK] ETABS conectado via GetActiveObject (tonf_m_C)")
                 return _model
         except Exception as e:
             last_err = e
 
-        # --- Metodo 3: Helper.GetObject (ruta especifica) ---
+        # --- Metodo 2: Helper.GetObject (ruta especifica) ---
         # Conecta al ETABS de la ruta indicada (v19 o v21).
         for exe_path in [ETABS19_EXE, ETABS21_EXE]:
             if not os.path.exists(exe_path):
@@ -113,6 +99,8 @@ def get_model(retries=5, wait=5):
                 import comtypes.gen.ETABSv1 as ETABSv1
                 helper = helper.QueryInterface(ETABSv1.cHelper)
                 obj = helper.GetObject(exe_path)
+                if obj is None:
+                    continue
                 m = obj.SapModel
                 if _test_model(m):
                     m.SetPresentUnits(TONF_M_C)
@@ -125,7 +113,8 @@ def get_model(retries=5, wait=5):
             except Exception as e:
                 last_err = e
 
-        # --- Metodo 4: Helper.CreateObject (lanza nueva instancia) ---
+        # --- Metodo 3: Helper.CreateObject (lanza nueva instancia v19) ---
+        # Solo si nada mas funciona. Lanza un nuevo ETABS.
         for exe_path in [ETABS19_EXE, ETABS21_EXE]:
             if not os.path.exists(exe_path):
                 continue
@@ -134,12 +123,11 @@ def get_model(retries=5, wait=5):
                 import comtypes.gen.ETABSv1 as ETABSv1
                 helper = helper.QueryInterface(ETABSv1.cHelper)
                 obj = helper.CreateObject(exe_path)
-                # ApplicationStart para nueva instancia
                 try:
                     obj.ApplicationStart()
                 except Exception:
                     pass
-                time.sleep(3)
+                time.sleep(5)
                 m = obj.SapModel
                 if _test_model(m):
                     m.SetPresentUnits(TONF_M_C)
@@ -151,6 +139,19 @@ def get_model(retries=5, wait=5):
                     return _model
             except Exception as e:
                 last_err = e
+
+        # --- Metodo 4: CreateObject (ultimo recurso, spawna v21) ---
+        try:
+            obj = comtypes.client.CreateObject('CSI.ETABS.API.ETABSObject')
+            m = obj.SapModel
+            if _test_model(m):
+                m.SetPresentUnits(TONF_M_C)
+                _etabs_obj = obj
+                _model = m
+                print("[OK] ETABS conectado via CreateObject (tonf_m_C)")
+                return _model
+        except Exception as e:
+            last_err = e
 
         if attempt < retries:
             print(f"  Intento {attempt}/{retries} fallido, reintentando en {wait}s...")
