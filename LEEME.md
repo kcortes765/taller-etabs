@@ -16,59 +16,58 @@ cd ta
 ## Requisitos
 - Python 3.12 (ya instalado)
 - `pip install comtypes` (si no esta)
-- ETABS 19
+- ETABS 19 o 21
 
-## IMPORTANTE: Dual-install v19 + v21
+## NOTA: Dual-install v19 + v21
 
-El PC lab tiene ETABS 19 y 21. El problema:
-- `CreateObject('CSI.ETABS.API.ETABSObject')` SIEMPRE lanza ETABS 21
-- Los scripts usan `Helper.GetObject(ruta_v19)` que conecta al ETABS 19 abierto
+Los scripts intentan 4 metodos de conexion automaticamente:
+1. CreateObject (version registrada en COM, generalmente v21)
+2. GetActiveObject (ETABS que ya esta corriendo)
+3. Helper.GetObject (conecta por ruta a v19 o v21)
+4. Helper.CreateObject (lanza nueva instancia)
+
+Ademas, limpian el cache de comtypes automaticamente al iniciar
+(previene "Puntero no valido" por type library de otra version).
 
 ## Como usar
 
 ```powershell
-# 1. MATAR TODO ETABS (19 y 21)
+# 1. MATAR TODO ETABS
 Get-Process ETABS -EA SilentlyContinue | Stop-Process -Force
 Start-Sleep 3
 
-# 2. LIMPIAR cache comtypes
-Remove-Item "C:\Users\Civil\AppData\Local\Programs\Python\Python312\Lib\site-packages\comtypes\gen\*" -Recurse -Force
-
-# 3. ABRIR solo ETABS 19
+# 2. ABRIR ETABS (v19 o v21, el que necesites)
 Start-Process "C:\Program Files\Computers and Structures\ETABS 19\ETABS.exe"
 
-# 4. ESPERAR 20 segundos (que cargue completamente)
+# 3. ESPERAR a que cargue (15-20 segundos)
 Start-Sleep 20
 
-# 5. VERIFICAR que solo v19 corre:
-Get-Process ETABS | Select-Object Id, Path
-# Debe mostrar SOLO la ruta de ETABS 19. Si aparece v21, matarla:
-# Get-Process ETABS | Where-Object {$_.Path -like "*21*"} | Stop-Process -Force
-
-# 6. DIAGNOSTICO (primera vez):
+# 4. DIAGNOSTICO (primera vez en un PC nuevo):
 cd C:\Users\Civil\Desktop\ta
 python diag.py
 
-# 7. TEST (verifica que API funciona):
+# 5. TEST (verifica que API funciona):
 python 00_test_api.py
 
-# 8. EJECUTAR TODO:
+# 6. EJECUTAR TODO:
 python run_all.py
 ```
 
 ## Si falla la conexion
 
-1. **"Puntero no valido"**: ETABS no cargo o hay conflicto v21
-   - Matar TODO, limpiar cache, re-abrir solo v19, esperar 20s
-2. **ETABS 21 sigue apareciendo**: `CreateObject` lo lanza
-   - Los scripts ya NO usan CreateObject, pero si limpiaste cache y ETABS 21 aparece, matarlo
-3. **Nada funciona**: Correr `python diag.py` y copiar resultado completo
+1. **"Puntero no valido"**: Los scripts ya limpian comtypes/gen automaticamente.
+   Si sigue fallando, cerrar TODO y reintentar.
+2. **Nada funciona**: `python diag.py` y copiar resultado completo.
+3. **Nuclear**: Registrar v19 como servidor COM (requiere admin):
+   ```
+   "C:\Program Files\Computers and Structures\ETABS 19\ETABS.exe" /regserver
+   ```
 
 ## Archivos
 | Archivo | Que hace |
 |---------|----------|
 | diag.py | Diagnostico completo (correr primero si hay problemas) |
-| config_helper.py | Conexion ETABS 19 via Helper.GetObject (NO lanza v21) |
+| config_helper.py | Conexion ETABS — 4 metodos, limpia cache, mantiene refs COM |
 | 00_test_api.py | Test de todos los metodos API |
 | 01-08_*.py | Pasos del edificio |
 | run_all.py | Ejecuta todo en orden |

@@ -1,127 +1,177 @@
 """
-config_helper.py — Conexion a ETABS 19 (PC lab con v19 + v21 instalados).
+config_helper.py — Conexion a ETABS via COM.
 
-PROBLEMA: CreateObject('CSI.ETABS.API.ETABSObject') siempre lanza ETABS 21
-porque v21 esta registrada como COM server default en Windows.
+COMPATIBLE CON DUAL-INSTALL (v19 + v21).
 
-SOLUCION: Usar Helper.GetObject(ruta_exe) que conecta al ETABS 19 ya abierto.
-NUNCA usar CreateObject (lanza v21).
+FIXES:
+1. Limpia comtypes.gen al inicio (previene type library stale de otra version)
+2. Mantiene TODOS los objetos COM en globales (previene garbage collection)
+3. Multiples metodos de conexion con reintentos
+4. Diagnostico claro si falla
 """
-import comtypes.client
-import subprocess
-import sys
-import time
 import os
+import sys
+import shutil
 
-_model = None
+# ====================================================================
+# PASO 0: Limpiar cache comtypes ANTES de importar comtypes.client.
+# Si comtypes.gen tiene type library de ETABS 21 y conectamos a v19,
+# los metodos COM fallan con "Puntero no valido" por vtable mismatch.
+# ====================================================================
+for _sp in sys.path:
+    _gen = os.path.join(_sp, 'comtypes', 'gen')
+    if os.path.isdir(_gen):
+        for _f in os.listdir(_gen):
+            if _f in ('__init__.py', '__pycache__'):
+                continue
+            _p = os.path.join(_gen, _f)
+            try:
+                shutil.rmtree(_p) if os.path.isdir(_p) else os.remove(_p)
+            except OSError:
+                pass
+        break
 
+import comtypes.client
+import time
+
+# ====================================================================
+# Constantes de unidades ETABS
+# ====================================================================
 TONF_M_C = 9
 KGF_M_C = 6
 KGF_CM_C = 7
 
-# Ruta ETABS 19 en PC lab UCN
+# Rutas ETABS (PC lab UCN)
 ETABS19_EXE = r"C:\Program Files\Computers and Structures\ETABS 19\ETABS.exe"
+ETABS21_EXE = r"C:\Program Files\Computers and Structures\ETABS 21\ETABS.exe"
+
+# ====================================================================
+# Estado global — mantener TODAS las refs COM vivas (evitar GC).
+# Si helper/obj se garbage-collectan, SapModel queda invalido.
+# ====================================================================
+_helper_ref = None
+_etabs_obj = None
+_model = None
 
 
-def _kill_etabs21():
-    """Mata procesos ETABS 21 que interfieren."""
+def _test_model(m):
+    """Verifica que SapModel funciona (no solo que existe)."""
     try:
-        r = subprocess.run(
-            ['powershell', '-Command',
-             'Get-Process ETABS -EA SilentlyContinue | '
-             'Where-Object {$_.Path -like \"*21*\"} | '
-             'Stop-Process -Force -PassThru | '
-             'Measure-Object | Select-Object -Expand Count'],
-            capture_output=True, text=True, timeout=10
-        )
-        n = r.stdout.strip()
-        if n and int(n) > 0:
-            print(f"  [!] Cerrados {n} procesos ETABS 21")
-            time.sleep(2)
-    except Exception:
-        pass
-
-
-def _is_etabs19_running():
-    """Verifica que ETABS 19 esta corriendo."""
-    try:
-        r = subprocess.run(
-            ['powershell', '-Command',
-             '(Get-Process ETABS -EA SilentlyContinue | '
-             'Where-Object {$_.Path -like \"*19*\"}).Count'],
-            capture_output=True, text=True, timeout=10
-        )
-        return int(r.stdout.strip() or '0') > 0
+        m.GetPresentUnits()
+        return True
     except Exception:
         return False
 
 
-def _connect_helper_getobject():
-    """Conectar via Helper.GetObject(ruta) — metodo correcto para dual-install."""
-    helper = comtypes.client.CreateObject('ETABSv1.Helper')
-    import comtypes.gen.ETABSv1 as ETABSv1
-    helper = helper.QueryInterface(ETABSv1.cHelper)
-    obj = helper.GetObject(ETABS19_EXE)  # RUTA al .exe, NO ProgID
-    m = obj.SapModel
-    m.GetPresentUnits()  # test — lanza excepcion si SapModel es null
-    return m
+def get_model(retries=5, wait=5):
+    """Conectar a ETABS. Intenta multiples metodos, reintenta si no esta listo."""
+    global _model, _etabs_obj, _helper_ref
 
-
-def _connect_getactiveobject():
-    """Conectar via GetActiveObject — funciona si ETABS 19 se registro en ROT."""
-    obj = comtypes.client.GetActiveObject('CSI.ETABS.API.ETABSObject')
-    m = obj.SapModel
-    m.GetPresentUnits()
-    return m
-
-
-def get_model(retries=5, wait=4):
-    """Conectar al ETABS 19 que esta corriendo."""
-    global _model
     if _model is not None:
         return _model
 
-    # Paso 0: Matar ETABS 21
-    _kill_etabs21()
-
-    # Verificar ETABS 19
-    if not _is_etabs19_running():
-        print("[ERROR] ETABS 19 no esta corriendo.")
-        print(f"  Abrir: {ETABS19_EXE}")
-        print("  Esperar a que cargue, luego re-ejecutar.")
-        sys.exit(1)
-
-    methods = [
-        ('Helper.GetObject', _connect_helper_getobject),
-        ('GetActiveObject',  _connect_getactiveobject),
-    ]
+    last_err = None
 
     for attempt in range(1, retries + 1):
-        for name, func in methods:
-            try:
-                _model = func()
-                _model.SetPresentUnits(TONF_M_C)
-                print(f"[OK] Conectado a ETABS 19 via {name} (tonf_m_C)")
+
+        # --- Metodo 1: CreateObject ---
+        # Crea/conecta a la version registrada (generalmente v21).
+        # El one-liner proba que esto funciona.
+        try:
+            obj = comtypes.client.CreateObject('CSI.ETABS.API.ETABSObject')
+            m = obj.SapModel
+            if _test_model(m):
+                m.SetPresentUnits(TONF_M_C)
+                _etabs_obj = obj  # KEEP ALIVE
+                _model = m
+                print("[OK] ETABS conectado via CreateObject (tonf_m_C)")
                 return _model
+        except Exception as e:
+            last_err = e
+
+        # --- Metodo 2: GetActiveObject ---
+        # Conecta a ETABS ya corriendo (si se registro en ROT).
+        try:
+            obj = comtypes.client.GetActiveObject('CSI.ETABS.API.ETABSObject')
+            m = obj.SapModel
+            if _test_model(m):
+                m.SetPresentUnits(TONF_M_C)
+                _etabs_obj = obj
+                _model = m
+                print("[OK] ETABS conectado via GetActiveObject (tonf_m_C)")
+                return _model
+        except Exception as e:
+            last_err = e
+
+        # --- Metodo 3: Helper.GetObject (ruta especifica) ---
+        # Conecta al ETABS de la ruta indicada (v19 o v21).
+        for exe_path in [ETABS19_EXE, ETABS21_EXE]:
+            if not os.path.exists(exe_path):
+                continue
+            try:
+                helper = comtypes.client.CreateObject('ETABSv1.Helper')
+                import comtypes.gen.ETABSv1 as ETABSv1
+                helper = helper.QueryInterface(ETABSv1.cHelper)
+                obj = helper.GetObject(exe_path)
+                m = obj.SapModel
+                if _test_model(m):
+                    m.SetPresentUnits(TONF_M_C)
+                    _helper_ref = helper  # KEEP ALIVE
+                    _etabs_obj = obj      # KEEP ALIVE
+                    _model = m
+                    ver = "19" if "19" in exe_path else "21"
+                    print(f"[OK] ETABS conectado via Helper.GetObject v{ver} (tonf_m_C)")
+                    return _model
             except Exception as e:
-                if attempt <= 2:
-                    print(f"  {name}: {e}")
+                last_err = e
+
+        # --- Metodo 4: Helper.CreateObject (lanza nueva instancia) ---
+        for exe_path in [ETABS19_EXE, ETABS21_EXE]:
+            if not os.path.exists(exe_path):
+                continue
+            try:
+                helper = comtypes.client.CreateObject('ETABSv1.Helper')
+                import comtypes.gen.ETABSv1 as ETABSv1
+                helper = helper.QueryInterface(ETABSv1.cHelper)
+                obj = helper.CreateObject(exe_path)
+                # ApplicationStart para nueva instancia
+                try:
+                    obj.ApplicationStart()
+                except Exception:
+                    pass
+                time.sleep(3)
+                m = obj.SapModel
+                if _test_model(m):
+                    m.SetPresentUnits(TONF_M_C)
+                    _helper_ref = helper
+                    _etabs_obj = obj
+                    _model = m
+                    ver = "19" if "19" in exe_path else "21"
+                    print(f"[OK] ETABS conectado via Helper.CreateObject v{ver} (tonf_m_C)")
+                    return _model
+            except Exception as e:
+                last_err = e
 
         if attempt < retries:
-            print(f"  Intento {attempt}/{retries}... esperando {wait}s")
+            print(f"  Intento {attempt}/{retries} fallido, reintentando en {wait}s...")
             time.sleep(wait)
 
-    print(f"\n[ERROR] No se pudo conectar despues de {retries} intentos.")
-    print("Probar:")
-    print("  1. Cerrar TODO (ETABS + Python)")
-    print("  2. powershell: Remove-Item comtypes\\gen\\* (limpiar cache)")
-    print("  3. Abrir SOLO ETABS 19, esperar 20 seg")
-    print("  4. python diag.py  (diagnostico)")
+    print(f"\n[ERROR] No se pudo conectar a ETABS: {last_err}")
+    print("\nSoluciones:")
+    print("  1. Cerrar TODO ETABS (taskkill /F /IM ETABS.exe)")
+    print("  2. Abrir ETABS (v19 o v21), esperar a que cargue completamente")
+    print("  3. python run_all.py")
+    print("")
+    print("  Si sigue fallando, probar registrar ETABS 19 como admin:")
+    print(f'  "{ETABS19_EXE}" /regserver')
     sys.exit(1)
 
 
 def set_units_kgf_cm(m):
+    """Cambiar a kgf/cm/C."""
     m.SetPresentUnits(KGF_CM_C)
 
+
 def set_units_tonf_m(m):
+    """Cambiar a tonf/m/C."""
     m.SetPresentUnits(TONF_M_C)
