@@ -44,6 +44,18 @@ KGF_CM_C = 7
 # Rutas ETABS (PC lab UCN)
 ETABS19_EXE = r"C:\Program Files\Computers and Structures\ETABS 19\ETABS.exe"
 ETABS21_EXE = r"C:\Program Files\Computers and Structures\ETABS 21\ETABS.exe"
+ETABS19_TLB = r"C:\Program Files\Computers and Structures\ETABS 19\ETABSv1.tlb"
+
+# ====================================================================
+# PASO 1: Cargar type library de ETABS 19 EXPLICITAMENTE.
+# Si no se hace esto, comtypes genera la TLB de v21 (registrada en COM),
+# y las firmas de metodos como SetStories no coinciden con v19.
+# ====================================================================
+if os.path.exists(ETABS19_TLB):
+    try:
+        comtypes.client.GetModule(ETABS19_TLB)
+    except Exception:
+        pass  # Si falla, usara la TLB auto-generada
 
 # ====================================================================
 # Estado global — mantener TODAS las refs COM vivas (evitar GC).
