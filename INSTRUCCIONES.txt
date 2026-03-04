@@ -1,0 +1,54 @@
+INSTRUCCIONES — Taller ETABS Edificio 1
+========================================
+
+REQUISITOS:
+- Python 3.12 instalado (ya lo tienes)
+- pip install comtypes (ya lo instalaste)
+- ETABS abierto
+
+PASOS:
+1. Copiar toda esta carpeta a: C:\Users\Civil\Desktop\ta
+2. Abrir ETABS → File → New Model → en blanco (no seleccionar template)
+3. Abrir PowerShell o CMD
+4. Ejecutar:
+
+   cd C:\Users\Civil\Desktop\ta
+   python 00_test_api.py
+
+5. Si el test pasa, ejecutar:
+
+   python run_all.py
+
+6. O doble-click en EJECUTAR.bat
+
+ALTERNATIVA — Correr paso a paso:
+   python 01_init_model.py
+   python 02_materials_sections.py
+   python 03_walls.py
+   python 04_beams.py
+   python 05_slabs.py
+   python 06_loads.py
+   python 07_diaphragm_supports.py
+   python 08_spectrum_cases.py
+
+DESPUES DE CORRER:
+- Verificar modelo en vista 3D (View > Set 3D View)
+- Verificar peso sismico: Display > Show Tables > Mass Summary
+  Esperado: ~1.0 tonf/m2
+- Hacer Run Analysis (Analyze > Run Analysis)
+- Ajustar R* segun T* obtenido del analisis modal
+
+ARCHIVOS:
+  config.py              Geometria completa del edificio
+  config_helper.py       Conexion ETABS
+  00_test_api.py         Test de la API (correr primero!)
+  01_init_model.py       Inicializa modelo + 20 pisos
+  02_materials_sections.py  G30, A630-420H, secciones
+  03_walls.py            Dibuja todos los muros
+  04_beams.py            Dibuja vigas VI20/60
+  05_slabs.py            Dibuja losas
+  06_loads.py            Cargas (PP, SCP, SCT, TERP, TERT)
+  07_diaphragm_supports.py  Diafragma rigido + empotramientos
+  08_spectrum_cases.py   Espectro NCh433, modal, SEx/SEy, combos
+  run_all.py             Ejecuta todo en orden
+  EJECUTAR.bat           Doble-click para ejecutar
