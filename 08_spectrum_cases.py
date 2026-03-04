@@ -39,22 +39,15 @@ def define_spectrum(m):
     set_units_tonf_m(m)
     T_vals, Sa_vals = build_elastic_spectrum()
 
-    # Intentar Func.ResponseSpectrum.SetUser (ETABS v19)
+    # Func.FuncRS.SetUser (confirmado para ETABS v19)
     try:
-        ret = m.Func.ResponseSpectrum.SetUser(
+        ret = m.Func.FuncRS.SetUser(
             'Espectro_NCh433', len(T_vals), T_vals, Sa_vals, 0.05
         )
-        print(f"  Func.ResponseSpectrum.SetUser: ret={ret}")
-    except Exception:
-        # Fallback: Func.FuncRS.SetUser
-        try:
-            ret = m.Func.FuncRS.SetUser(
-                'Espectro_NCh433', len(T_vals), T_vals, Sa_vals, 0.05
-            )
-            print(f"  Func.FuncRS.SetUser (fallback): ret={ret}")
-        except Exception as e:
-            print(f"  [ERROR] No se pudo definir espectro: {e}")
-            return
+        print(f"  Func.FuncRS.SetUser: ret={ret}")
+    except Exception as e:
+        print(f"  [ERROR] No se pudo definir espectro: {e}")
+        return
 
     print(f"[OK] Espectro: {len(T_vals)} puntos (T=0 a 5s)")
     print(f"     Sa(T=0)={Sa_vals[0]:.3f}g, Sa(T=1s)={Sa_vals[20]:.4f}g")
@@ -62,20 +55,27 @@ def define_spectrum(m):
 
 def define_mass_source(m):
     """Fuente de masa: selfweight + 100%TERP + 25%SCP."""
-    try:
-        ret = m.PropMass.SetMassSource_1(
-            True,             # IncludeElements (self weight)
-            False,            # IncludeAddedMass
-            True,             # IncludeLoads
-            2,                # NumLoads
-            ['TERP', 'SCP'],  # LoadPatterns
-            [1.0, 0.25]       # Scale factors
-        )
-        print(f"  PropMass.SetMassSource_1: ret={ret}")
-        print("[OK] Fuente de masa sismica definida")
-    except Exception as e:
-        print(f"  [WARN] Mass source: {e}")
-        print("  Definir manualmente: Define > Mass Source")
+    # Intentar multiples nombres de API segun version ETABS
+    methods = [
+        ('PropMass', lambda: m.PropMass.SetMassSource_1(
+            True, False, True, 2, ['TERP', 'SCP'], [1.0, 0.25])),
+        ('MassSource', lambda: m.MassSource.SetMassSource_1(
+            True, False, True, 2, ['TERP', 'SCP'], [1.0, 0.25])),
+    ]
+    for name, func in methods:
+        try:
+            ret = func()
+            print(f"  {name}.SetMassSource_1: ret={ret}")
+            print("[OK] Fuente de masa sismica definida")
+            return
+        except Exception:
+            pass
+
+    print("  [WARN] Mass source no se pudo definir via API")
+    print("  >>> DEFINIR MANUALMENTE: Define > Mass Source")
+    print("      - Include Element Self Mass: SI")
+    print("      - TERP: factor 1.0")
+    print("      - SCP:  factor 0.25")
 
 
 def define_modal_case(m):
