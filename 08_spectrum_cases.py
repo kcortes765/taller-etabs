@@ -245,14 +245,22 @@ def define_rs_cases(m):
     print("[OK] Casos RS definidos (SEx, SEy)")
 
 
-def define_combinations(m):
-    """Combinaciones NCh3171 para diseno."""
+def define_combinations(m, spectrum_ok=True):
+    """Combinaciones NCh3171 para diseno.
+
+    Si spectrum_ok=False, las combos C3-C8 (con SEx/SEy) se omiten
+    porque esos casos RS no existen. Se pueden agregar manualmente
+    una vez que el espectro sea importado y los RS cases definidos.
+    """
     set_units_tonf_m(m)
 
-    combos = {
-        'C1_1.4D':       [('PP', 1.4), ('TERP', 1.4), ('TERT', 1.4)],
-        'C2_1.2D+1.6L':  [('PP', 1.2), ('TERP', 1.2), ('TERT', 1.2),
-                           ('SCP', 1.6), ('SCT', 0.5)],
+    combos_gravity = {
+        'C1_1.4D':      [('PP', 1.4), ('TERP', 1.4), ('TERT', 1.4)],
+        'C2_1.2D+1.6L': [('PP', 1.2), ('TERP', 1.2), ('TERT', 1.2),
+                          ('SCP', 1.6), ('SCT', 0.5)],
+    }
+
+    combos_seismic = {
         'C3_1.2D+L+SEx': [('PP', 1.2), ('TERP', 1.2), ('SCP', 1.0), ('SEx', 1.4)],
         'C4_1.2D+L+SEy': [('PP', 1.2), ('TERP', 1.2), ('SCP', 1.0), ('SEy', 1.4)],
         'C5_0.9D+SEx':   [('PP', 0.9), ('TERP', 0.9), ('SEx', 1.4)],
@@ -260,6 +268,13 @@ def define_combinations(m):
         'C7_0.9D-SEx':   [('PP', 0.9), ('TERP', 0.9), ('SEx', -1.4)],
         'C8_0.9D-SEy':   [('PP', 0.9), ('TERP', 0.9), ('SEy', -1.4)],
     }
+
+    combos = dict(combos_gravity)
+    if spectrum_ok:
+        combos.update(combos_seismic)
+    else:
+        print("  [SKIP] Combos C3-C8 omitidas — espectro/RS cases no definidos")
+        print("  >>> Agregar manualmente tras importar espectro_nch433.txt y definir SEx/SEy")
 
     ok = 0
     for combo_name, loads in combos.items():
@@ -312,10 +327,10 @@ def main():
         print("  >>> 1. Importar espectro desde espectro_nch433.txt")
         print("  >>> 2. Re-ejecutar: python 08_spectrum_cases.py")
 
-    # 5. Combinaciones (independiente del espectro)
+    # 5. Combinaciones (C1-C2 siempre; C3-C8 solo si espectro OK)
     print("\n--- Combinaciones ---")
     try:
-        define_combinations(m)
+        define_combinations(m, spectrum_ok=spectrum_ok)
     except Exception as e:
         print(f"  [ERROR] Combinaciones fallo: {e}")
 

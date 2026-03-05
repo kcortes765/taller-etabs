@@ -10,10 +10,8 @@ import subprocess
 import sys
 import os
 import shutil
-import time
 
 ETABS19_EXE = r"C:\Program Files\Computers and Structures\ETABS 19\ETABS.exe"
-ETABS21_EXE = r"C:\Program Files\Computers and Structures\ETABS 21\ETABS.exe"
 
 
 def section(title):
@@ -43,14 +41,12 @@ def main():
     # --- 2. Instalaciones ---
     section("2. INSTALACIONES")
     print(f"  ETABS 19: {'SI' if os.path.exists(ETABS19_EXE) else 'NO'}")
-    print(f"  ETABS 21: {'SI' if os.path.exists(ETABS21_EXE) else 'NO'}")
 
-    for ver, exe in [('19', ETABS19_EXE), ('21', ETABS21_EXE)]:
-        d = os.path.dirname(exe)
-        if os.path.exists(d):
-            tlbs = [f for f in os.listdir(d) if f.lower().endswith('.tlb')]
-            if tlbs:
-                print(f"  v{ver} TLBs: {', '.join(tlbs)}")
+    d = os.path.dirname(ETABS19_EXE)
+    if os.path.exists(d):
+        tlbs = [f for f in os.listdir(d) if f.lower().endswith('.tlb')]
+        if tlbs:
+            print(f"  v19 TLBs: {', '.join(tlbs)}")
 
     # --- 3. Python ---
     section("3. PYTHON")
@@ -172,38 +168,6 @@ def main():
             return {'model': m, 'obj': obj, 'helper': h}
         _test_method('B-Helper.GetObject(v19)', _try_helper_v19)
 
-    # C. Helper.GetObject v21
-    if os.path.exists(ETABS21_EXE):
-        def _try_helper_v21():
-            h = comtypes.client.CreateObject('ETABSv1.Helper')
-            import comtypes.gen.ETABSv1 as ETABSv1
-            h = h.QueryInterface(ETABSv1.cHelper)
-            obj = h.GetObject(ETABS21_EXE)
-            if obj is None:
-                raise Exception("GetObject retorno None")
-            m = obj.SapModel
-            return {'model': m, 'obj': obj, 'helper': h}
-        _test_method('C-Helper.GetObject(v21)', _try_helper_v21)
-
-    # D. Helper.CreateObject v19 (crea nueva instancia)
-    if os.path.exists(ETABS19_EXE):
-        def _try_helper_create_v19():
-            h = comtypes.client.CreateObject('ETABSv1.Helper')
-            import comtypes.gen.ETABSv1 as ETABSv1
-            h = h.QueryInterface(ETABSv1.cHelper)
-            obj = h.CreateObject(ETABS19_EXE)
-            try:
-                obj.ApplicationStart()
-            except Exception:
-                pass
-            try:
-                obj.Visible = True
-            except Exception:
-                pass
-            time.sleep(5)
-            m = obj.SapModel
-            return {'model': m, 'obj': obj, 'helper': h}
-        _test_method('D-Helper.CreateObject(v19)', _try_helper_create_v19)
 
     # --- Resumen ---
     section("RESUMEN")
@@ -215,13 +179,14 @@ def main():
     if fail_methods:
         print(f"  FALLAN:    {', '.join(fail_methods)}")
 
-    # Advertencia sobre registro COM
-    if 'A-GetActiveObject' in fail_methods and any('Helper.CreateObject' in m for m in ok_methods):
-        print("\n  [WARN] GetActiveObject falla pero CreateObject funciona.")
-        print("  Esto significa que ETABS NO esta en el Running Object Table.")
-        print("  El pipeline creara una NUEVA instancia (visible).")
-        print("  Para evitar esto, registrar ETABS 19:")
-        print(f'  "{ETABS19_EXE}" /regserver')
+    # Advertencia si GetActiveObject falla
+    if 'A-GetActiveObject' in fail_methods:
+        print("\n  [WARN] GetActiveObject falla.")
+        print("  ETABS 19 no esta en el Running Object Table.")
+        print("  Soluciones:")
+        print("  1. Abrir ETABS 19 manualmente, esperar 20s, reintentar")
+        print("  2. Registrar ETABS 19 como admin:")
+        print(f'     "{ETABS19_EXE}" /regserver')
 
     if not ok_methods:
         print("\n  NADA FUNCIONO. Probar:")

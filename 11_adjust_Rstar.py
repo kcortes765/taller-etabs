@@ -359,6 +359,9 @@ def main():
     print("\n--- Actualizar escala RS cases ---")
     update_rs_scale(m, 'SEx', 'U1', Rx_star)
     update_rs_scale(m, 'SEy', 'U2', Ry_star)
+    # Actualizar tambien los casos de torsion accidental (si existen)
+    update_rs_scale(m, 'SEx_b2', 'U1', Rx_star)
+    update_rs_scale(m, 'SEy_b2', 'U2', Ry_star)
 
     # Re-guardar y re-analizar
     print("\n--- Re-guardar modelo ---")

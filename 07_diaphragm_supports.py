@@ -14,14 +14,16 @@ def define_diaphragm(m):
 
     # Intentar crear diafragma explicito 'DR'
     diaph_name = None
-    if m.Diaphragm is not None:
-        try:
+    try:
+        if m.Diaphragm is not None:
             ret = m.Diaphragm.SetDiaphragm('DR', False)
             if ret == 0:
                 diaph_name = 'DR'
                 print(f"  Diaphragm.SetDiaphragm 'DR': ret={ret}")
-        except Exception as e:
-            print(f"  Diaphragm.SetDiaphragm fallo: {e}")
+    except AttributeError:
+        print("  m.Diaphragm no disponible en este binding")
+    except Exception as e:
+        print(f"  Diaphragm.SetDiaphragm fallo: {e}")
 
     if diaph_name is None:
         diaph_name = 'D1'  # default en v19 tras NewBlank

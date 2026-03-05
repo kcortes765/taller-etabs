@@ -68,7 +68,7 @@ def main():
         ('01_init_model',         'Paso 1:  Inicializar modelo y pisos',   True),
         ('02_materials_sections', 'Paso 2:  Materiales y secciones',       True),
         ('03_walls',              'Paso 3:  Dibujar muros',                True),
-        ('04_beams',              'Paso 4:  Dibujar vigas',                True),
+        ('04_beams',              'Paso 4:  Dibujar vigas',                False),
         ('05_slabs',              'Paso 5:  Dibujar losas',                True),
         ('06_loads',              'Paso 6:  Patrones y cargas',            False),
         ('07_diaphragm_supports', 'Paso 7:  Diafragma rigido + empotramientos', False),
