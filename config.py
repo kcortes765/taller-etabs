@@ -330,11 +330,44 @@ LOAD_PATTERNS = {
 }
 
 
+# ============================================================
+# DIMENSIONES DE PLANTA (para torsion accidental)
+# ============================================================
+LX_PLANTA = max(GRID_X.values()) - min(GRID_X.values())  # 38.505 m
+LY_PLANTA = max(GRID_Y.values()) - min(GRID_Y.values())  # 13.821 m
+EA_X = 0.05 * LX_PLANTA  # excentricidad accidental para sismo Y (1.925 m)
+EA_Y = 0.05 * LY_PLANTA  # excentricidad accidental para sismo X (0.691 m)
+
+# Centro geometrico aproximado de la planta
+CM_X = (min(GRID_X.values()) + max(GRID_X.values())) / 2  # ~19.25 m
+CM_Y = (min(GRID_Y.values()) + max(GRID_Y.values())) / 2  # ~6.91 m
+
+# Area de planta
+AREA_PLANTA = LX_PLANTA * LY_PLANTA  # ~532 m2
+
+
+# ============================================================
+# R* (DS61)
+# ============================================================
+def calc_R_star(Ro, T_star):
+    """Calcula R* segun DS61 Art. 5.1.2."""
+    if Ro <= 1:
+        return 1.0
+    T0r = 0.1 * Ro**2 / (Ro - 1)  # ~1.21 para Ro=11
+    if T_star >= T0r:
+        return 1.0 + (Ro - 1.0) * T_star / (0.1 * Ro**2 + T_star)
+    else:
+        return 1.0 + (Ro - 1.0) * (T_star / T0r) ** 0.5
+
+
 if __name__ == '__main__':
     print(f"Edificio 1 — {N_STORIES} pisos")
     print(f"H total: {STORY_ELEVATIONS[-1]} m")
     print(f"Grilla: {len(GRID_X)} ejes X, {len(GRID_Y)} ejes Y")
+    print(f"Planta: {LX_PLANTA:.3f} x {LY_PLANTA:.3f} m ({AREA_PLANTA:.0f} m2)")
     print(f"Muros dir Y: {len(MUROS_DIR_Y)}")
     print(f"Muros dir X: {len(MUROS_DIR_X)}")
     print(f"Vigas: {len(VIGAS)}")
     print(f"Ec = {EC_MPA:.0f} MPa")
+    print(f"R*(Ro=11, T*=1.5s) = {calc_R_star(11, 1.5):.2f}")
+    print(f"R*(Ro=11, T*=0.5s) = {calc_R_star(11, 0.5):.2f}")
