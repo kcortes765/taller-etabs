@@ -124,14 +124,8 @@ def verify_elements(m):
 
 
 def refresh_view(m):
-    """Forzar refresco de la vista ETABS."""
-    try:
-        m.View.RefreshView(0, False)
-    except Exception:
-        try:
-            m.View.RefreshView()
-        except Exception:
-            pass
+    """Refresco de vista — deshabilitado para evitar freeze con modelos grandes."""
+    pass
 
 
 def get_model(retries=3, wait=5):
