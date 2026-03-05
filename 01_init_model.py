@@ -12,17 +12,9 @@ from config import N_STORIES, STORY_NAMES, STORY_HEIGHTS, STORY_ELEVATIONS
 def main():
     m = get_model()
 
-    # FIX v5: Usar File.NewBlank() PRIMERO para mantener el MDI window activo.
-    # InitializeNewModel destruye el contexto de UI → sin render, .edb corrupto.
-    # File.NewBlank() crea modelo nuevo manteniendo la ventana visible.
-    try:
-        ret = m.File.NewBlank()
-        print(f"  File.NewBlank: ret={ret}")
-        m.SetPresentUnits(9)  # tonf_m_C
-    except Exception as e:
-        print(f"  File.NewBlank fallo: {e} — usando InitializeNewModel")
-        ret = m.InitializeNewModel(9)
-        print(f"  InitializeNewModel: ret={ret}")
+    # Inicializar modelo en blanco (9 = tonf_m_C)
+    ret = m.InitializeNewModel(9)
+    print(f"  InitializeNewModel: ret={ret}")
 
     # Definir pisos — probar multiples firmas porque v19 y v21 difieren
     elevations = [0.0] + STORY_ELEVATIONS  # N+1 elementos
