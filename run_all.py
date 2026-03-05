@@ -73,6 +73,7 @@ def main():
         ('06_loads',              'Paso 6:  Patrones y cargas',            False),
         ('07_diaphragm_supports', 'Paso 7:  Diafragma rigido + empotramientos', False),
         ('07b_save_checkpoint',   'Paso 7b: VERIFICACION + Checkpoint',    True),
+        ('07c_automesh',          'Paso 7c: Auto-Mesh muros y losas (CRITICO)', False),
     ]
 
     for module, desc, critical in geometry_steps:
@@ -161,14 +162,26 @@ def main():
     print("  - Edificio1_SemiRigido.edb   (sin diafragma rigido)")
     print("  - espectro_nch433.txt        (espectro para importar manual)")
     print()
-    print("  VERIFICAR EN ETABS:")
+    print("  VERIFICAR EN ETABS (checklist pre-entrega):")
     print("  1. Vista 3D: muros, vigas, losas visibles")
-    print("  2. Peso sismico ~1 tonf/m2/piso")
-    print("  3. Drift < 0.002 en CM")
-    print("  4. Mass source: PP + 1.0*TERP + 0.25*SCP")
+    print("  2. Malla visible en muros (View > Show Model > Auto Mesh)")
+    print("  3. Peso sismico ~1 tonf/m2/piso (paso 12 lo reporta)")
+    print("  4. Drift < 0.002 en CM, < 0.001 en extremos (paso 12)")
+    print("  5. Qmin verificado (paso 12 lo reporta con instruccion)")
+    print("  6. Mass source: PP + 1.0*TERP + 0.25*SCP")
+    print("  7. P-Delta activado (MANUAL): Define > P-Delta Options")
+    print()
+    print("  P-DELTA (ACCION MANUAL OBLIGATORIA):")
+    print("  Define > P-Delta Options > Iterative - Based on Loads")
+    print("  Agregar: PP(1.0) + TERP(1.0) + TERT(1.0) + SCP(0.25)")
+    print("  Luego re-analizar.")
     print()
     if failed:
         print("  PASOS MANUALES PENDIENTES:")
+        if '07c_automesh' in failed:
+            print("  - AUTO-MESH (CRITICO):")
+            print("    Ctrl+A → Assign > Shell > Wall Auto Mesh Options → MaxSize=1.0m")
+            print("    Ctrl+A → Assign > Shell > Floor Auto Mesh Options → MaxSize=1.0m")
         if '08_spectrum_cases' in failed:
             print("  - Espectro: Define > Functions > RS > From File > espectro_nch433.txt")
             print("  - Mass source: Define > Mass Source")

@@ -2,12 +2,15 @@
 12_results.py — Extraer y mostrar resumen de resultados post-analisis.
 
 Muestra: periodos, masa participativa, peso sismico, corte basal, drift.
+Verifica: Qmin NCh433 art.6.3.3, drift limite 0.002, peso ~1 tonf/m2/piso.
 """
 from config_helper import get_model, set_units_tonf_m
 from config import (
     N_STORIES, STORY_NAMES, STORY_HEIGHTS, STORY_ELEVATIONS,
-    AREA_PLANTA, G_ACCEL, RO_MUROS,
+    AREA_PLANTA, G_ACCEL, RO_MUROS, I_FACTOR,
 )
+
+CMIN = 0.07  # NCh433 art.6.3.3
 
 
 def show_modal_results(m):
@@ -270,12 +273,11 @@ def _print_drifts(result, case_name):
 
 
 def show_seismic_weight(m):
-    """Estimar peso sismico del edificio."""
+    """Estimar peso sismico del edificio. Retorna W en tonf (o None)."""
     print("\n" + "=" * 60)
     print("  PESO SISMICO")
     print("=" * 60)
 
-    # Intentar leer reaccion base para carga muerta
     try:
         m.Results.Setup.DeselectAllCasesAndCombosForOutput()
         m.Results.Setup.SetCaseSelectedForOutput('PP')
@@ -289,27 +291,120 @@ def show_seismic_weight(m):
         try:
             result = func()
             vals = list(result)
-            # Buscar Fz (fuerza vertical)
             for v in vals:
                 if isinstance(v, (list, tuple)):
                     try:
                         fz_list = [float(x) for x in v]
                         fz = max(abs(x) for x in fz_list)
-                        if fz > 100:  # probablemente peso total en tonf
+                        if fz > 100:
                             print(f"  Reaccion vertical PP: {fz:.0f} tonf")
-                            print(f"  Peso/area: {fz / AREA_PLANTA:.2f} tonf/m2")
-                            if 0.8 <= fz / AREA_PLANTA / N_STORIES <= 1.2:
+                            peso_m2 = fz / AREA_PLANTA / N_STORIES
+                            print(f"  Peso/area/piso: {peso_m2:.3f} tonf/m2")
+                            if 0.8 <= peso_m2 <= 1.2:
                                 print(f"  [OK] Peso razonable (~1 tonf/m2/piso)")
-                            return
+                            else:
+                                print(f"  [WARN] Peso fuera de rango tipico (0.8-1.2 t/m2)")
+                            return fz
                     except (ValueError, TypeError):
                         pass
             print(f"  Resultado raw: {result}")
-            return
+            return None
         except Exception:
             pass
 
     print("  [WARN] No se pudo leer peso sismico")
     print("  >>> MANUAL: Display > Show Tables > Base Reactions (caso PP)")
+    return None
+
+
+def _get_base_shear_values(m):
+    """Leer cortes basales SEx y SEy. Retorna dict {case: (Fx, Fy)}."""
+    shears = {}
+    for case_name in ['SEx', 'SEy']:
+        try:
+            m.Results.Setup.DeselectAllCasesAndCombosForOutput()
+            m.Results.Setup.SetCaseSelectedForOutput(case_name)
+        except Exception:
+            continue
+
+        for func in [
+            lambda: m.Results.BaseReact(0, [], [], [], [], [], [], [], [], 0),
+            lambda: m.Results.BaseReact(),
+        ]:
+            try:
+                result = func()
+                vals = list(result)
+                forces = []
+                for v in vals:
+                    if isinstance(v, (list, tuple)):
+                        try:
+                            forces.append([float(x) for x in v])
+                        except (ValueError, TypeError):
+                            pass
+                if len(forces) >= 2:
+                    fx = abs(forces[0][0]) if forces[0] else 0
+                    fy = abs(forces[1][0]) if forces[1] else 0
+                    shears[case_name] = (fx, fy)
+                    break
+            except Exception:
+                pass
+    return shears
+
+
+def verify_qmin(m, W):
+    """Verificar Qmin NCh433 art.6.3.3.
+
+    Qmin = Cmin * I * W = 0.07 * 1.0 * W
+    Q_din (SEx o SEy) debe ser >= Qmin
+
+    Si W es None, usa estimacion basada en area y pisos.
+    """
+    print("\n" + "=" * 60)
+    print("  VERIFICACION QMIN — NCh433 art.6.3.3")
+    print("=" * 60)
+
+    if W is None:
+        W = AREA_PLANTA * N_STORIES * 1.0
+        print(f"  W (estimado): {W:.0f} tonf  (area={AREA_PLANTA:.0f}m2 x {N_STORIES}p x 1t/m2)")
+    else:
+        print(f"  W (leido PP): {W:.0f} tonf")
+
+    Qmin = CMIN * I_FACTOR * W
+    print(f"  Qmin = {CMIN} x {I_FACTOR} x {W:.0f} = {Qmin:.1f} tonf")
+    print()
+
+    shears = _get_base_shear_values(m)
+
+    all_ok = True
+    for case_name in ['SEx', 'SEy']:
+        if case_name not in shears:
+            print(f"  {case_name}: no disponible — verificar manualmente >= {Qmin:.0f} tonf")
+            all_ok = False
+            continue
+
+        fx, fy = shears[case_name]
+        # Para SEx el corte relevante es Fx; para SEy es Fy
+        Q_din = fx if case_name == 'SEx' else fy
+        print(f"  {case_name}: Q_din = {Q_din:.1f} tonf", end="")
+
+        if Q_din >= Qmin:
+            print(f"  ≥ Qmin {Qmin:.0f} tonf → [OK]")
+        else:
+            all_ok = False
+            amp = Qmin / Q_din if Q_din > 0 else float('inf')
+            print(f"  < Qmin {Qmin:.0f} tonf → [ALERTA]")
+            print(f"    Amplificacion necesaria: x{amp:.4f}")
+            # Obtener escala actual del script 11 (g / R*)
+            print(f"    ACCION MANUAL EN ETABS:")
+            print(f"      Define > Load Cases > {case_name} > Modify/Show")
+            print(f"      Scale Factor actual × {amp:.4f}")
+            print(f"      Luego re-analizar (Analyze > Run Analysis)")
+
+    if all_ok:
+        print(f"\n  [OK] Qmin verificado — cortes basales dentro de la norma")
+    else:
+        print(f"\n  [ACCION REQUERIDA] Ajustar escala(s) y re-analizar")
+        print(f"  NCh433 art.6.3.3: El corte basal dinamico no sera inferior a Qmin")
 
 
 def main():
@@ -317,7 +412,8 @@ def main():
     show_modal_results(m)
     show_base_shear(m)
     show_story_drifts(m)
-    show_seismic_weight(m)
+    W = show_seismic_weight(m)
+    verify_qmin(m, W)
     print("\n=== 12_results COMPLETADO ===")
 
 

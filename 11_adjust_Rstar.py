@@ -2,12 +2,19 @@
 11_adjust_Rstar.py — Leer T* del analisis modal, calcular R*, actualizar
 escala de todos los RS cases, re-guardar y re-analizar.
 
+Tambien verifica Qmin NCh433 art.6.3.3: Q_din >= 0.07 * I * W
+
 Requiere que el analisis haya corrido al menos una vez (paso 10).
 """
 import os
 import time
 from config_helper import get_model, set_units_tonf_m
-from config import RO_MUROS, G_ACCEL, calc_R_star
+from config import RO_MUROS, G_ACCEL, I_FACTOR, AREA_PLANTA, N_STORIES, calc_R_star
+
+# Qmin coefficient NCh433 art.6.3.3
+CMIN = 0.07
+# Peso sismico estimado (tonf) — se actualiza si se puede leer de ETABS
+W_ESTIMADO = AREA_PLANTA * N_STORIES * 1.0  # ~532 * 20 * 1.0 = 10640 tonf
 
 
 def get_modal_results(m):
@@ -207,6 +214,124 @@ def update_rs_scale(m, case_name, direction, R_star):
     return False
 
 
+def read_base_shear(m, case_name):
+    """Leer corte basal horizontal para un caso de carga. Retorna (Fx, Fy) en tonf."""
+    try:
+        m.Results.Setup.DeselectAllCasesAndCombosForOutput()
+        m.Results.Setup.SetCaseSelectedForOutput(case_name)
+    except Exception:
+        return None, None
+
+    for func in [
+        lambda: m.Results.BaseReact(0, [], [], [], [], [], [], [], [], 0),
+        lambda: m.Results.BaseReact(),
+    ]:
+        try:
+            result = func()
+            vals = list(result)
+            forces = []
+            for v in vals:
+                if isinstance(v, (list, tuple)):
+                    try:
+                        forces.append([float(x) for x in v])
+                    except (ValueError, TypeError):
+                        pass
+            # Formato tipico: [Fx], [Fy], [Fz], ...
+            if len(forces) >= 2:
+                fx = abs(forces[0][0]) if forces[0] else 0
+                fy = abs(forces[1][0]) if forces[1] else 0
+                return fx, fy
+        except Exception:
+            pass
+    return None, None
+
+
+def verify_qmin(m, Rx_star, Ry_star):
+    """Verificar corte minimo NCh433 art.6.3.3: Q_din >= Cmin * I * W."""
+    print("\n--- Verificar Qmin NCh433 art.6.3.3 ---")
+
+    # Peso sismico: intentar leer de la reaccion base de PP
+    W = None
+    try:
+        m.Results.Setup.DeselectAllCasesAndCombosForOutput()
+        m.Results.Setup.SetCaseSelectedForOutput('PP')
+        for func in [
+            lambda: m.Results.BaseReact(0, [], [], [], [], [], [], [], [], 0),
+            lambda: m.Results.BaseReact(),
+        ]:
+            try:
+                result = func()
+                vals = list(result)
+                for v in vals:
+                    if isinstance(v, (list, tuple)):
+                        try:
+                            fz_list = [float(x) for x in v]
+                            fz = max(abs(x) for x in fz_list)
+                            if fz > 1000:  # peso total razonable en tonf
+                                W = fz
+                                break
+                        except (ValueError, TypeError):
+                            pass
+                if W:
+                    break
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+    if W is None:
+        W = W_ESTIMADO
+        print(f"  W (estimado) = {W:.0f} tonf  ({AREA_PLANTA:.0f}m² × {N_STORIES}p × 1.0t/m²)")
+        print("  [INFO] No se pudo leer W de PP. Usando estimacion.")
+    else:
+        print(f"  W (PP base) = {W:.0f} tonf")
+
+    Qmin = CMIN * I_FACTOR * W
+    print(f"  Qmin = {CMIN} × {I_FACTOR} × {W:.0f} = {Qmin:.0f} tonf")
+
+    # Leer corte basal con los nuevos R*
+    Qx, _ = read_base_shear(m, 'SEx')
+    _, Qy = read_base_shear(m, 'SEy')
+
+    print()
+    sf_x_actual = G_ACCEL / Rx_star
+    sf_y_actual = G_ACCEL / Ry_star
+
+    if Qx is not None:
+        print(f"  Q_din_X = {Qx:.0f} tonf  (SEx, R*x={Rx_star:.2f})")
+        if Qx < Qmin:
+            amp_x = Qmin / Qx
+            sf_x_new = sf_x_actual * amp_x
+            print(f"  [ALERTA] Q_din_X < Qmin! Amplificar escala SEx:")
+            print(f"           Factor amplificacion = {amp_x:.4f}")
+            print(f"           Nueva escala SEx = g/R*x × amp = {sf_x_new:.4f} m/s2")
+            print(f"           >>> ETABS: Edit Case SEx → Scale Factor = {sf_x_new:.4f}")
+        else:
+            print(f"  [OK] Q_din_X >= Qmin ({Qx:.0f} >= {Qmin:.0f})")
+    else:
+        print(f"  Q_din_X: no disponible (analisis pendiente)")
+        print(f"  Verificar manualmente: Q_SEx >= {Qmin:.0f} tonf")
+        print(f"  Si Q_SEx < {Qmin:.0f}: nueva escala = {sf_x_actual:.4f} × ({Qmin:.0f}/Q_SEx)")
+
+    if Qy is not None:
+        print(f"  Q_din_Y = {Qy:.0f} tonf  (SEy, R*y={Ry_star:.2f})")
+        if Qy < Qmin:
+            amp_y = Qmin / Qy
+            sf_y_new = sf_y_actual * amp_y
+            print(f"  [ALERTA] Q_din_Y < Qmin! Amplificar escala SEy:")
+            print(f"           Factor amplificacion = {amp_y:.4f}")
+            print(f"           Nueva escala SEy = {sf_y_new:.4f} m/s2")
+            print(f"           >>> ETABS: Edit Case SEy → Scale Factor = {sf_y_new:.4f}")
+        else:
+            print(f"  [OK] Q_din_Y >= Qmin ({Qy:.0f} >= {Qmin:.0f})")
+    else:
+        print(f"  Q_din_Y: no disponible (analisis pendiente)")
+        print(f"  Verificar manualmente: Q_SEy >= {Qmin:.0f} tonf")
+        print(f"  Si Q_SEy < {Qmin:.0f}: nueva escala = {sf_y_actual:.4f} × ({Qmin:.0f}/Q_SEy)")
+
+    return Qmin, Qx, Qy
+
+
 def main():
     m = get_model()
 
@@ -254,6 +379,9 @@ def main():
     except Exception as e:
         print(f"  [WARN] RunAnalysis: {e}")
         print("  >>> Ejecutar manualmente: Analyze > Run Analysis")
+
+    # Verificar Qmin con los resultados del re-analisis
+    verify_qmin(m, Rx_star, Ry_star)
 
     print("\n=== 11_adjust_Rstar COMPLETADO ===")
     print(f"  T*x={Tx_star:.3f}s → R*x={Rx_star:.2f}")
