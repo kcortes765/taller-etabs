@@ -331,13 +331,18 @@ def define_combinations(m):
 def main():
     m = get_model()
     print("\n--- Espectro NCh433 ---")
-    define_spectrum(m)
+    spectrum_ok = define_spectrum(m)
     print("\n--- Fuente de masa ---")
     define_mass_source(m)
     print("\n--- Caso modal ---")
     define_modal_case(m)
     print("\n--- Response Spectrum ---")
-    define_rs_cases(m)
+    if spectrum_ok:
+        define_rs_cases(m)
+    else:
+        print("  [SKIP] No se crean RS cases porque el espectro no se definio")
+        print("  >>> 1. Definir espectro manualmente (ver arriba)")
+        print("  >>> 2. Re-ejecutar: python 08_spectrum_cases.py")
     print("\n--- Combinaciones ---")
     define_combinations(m)
     print("\n=== 08_spectrum_cases COMPLETADO ===")

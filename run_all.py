@@ -43,10 +43,12 @@ def main():
         ('05_slabs',              'Paso 5:  Dibujar losas'),
         ('06_loads',              'Paso 6:  Patrones y cargas'),
         ('07_diaphragm_supports', 'Paso 7:  Diafragma rigido + empotramientos'),
+        # GUARDADO INTERMEDIO (previene perder geometria si algo falla despues)
+        ('07b_save_checkpoint',   'Paso 7b: Guardar geometria (checkpoint)'),
         # FASE 2: ANALISIS
         ('08_spectrum_cases',     'Paso 8:  Espectro, modal, mass source, combos'),
         ('09_torsion_cases',      'Paso 9:  Torsion accidental (caso a + b forma 2)'),
-        ('10_save_run',           'Paso 10: Guardar + Analizar (espectro elastico)'),
+        ('10_save_run',           'Paso 10: Guardar + Analizar'),
         # FASE 3: POST-PROCESO
         ('11_adjust_Rstar',       'Paso 11: Leer T*, calcular R*, re-escalar, re-analizar'),
         ('12_results',            'Paso 12: Resumen resultados'),

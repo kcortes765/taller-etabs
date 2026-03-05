@@ -124,65 +124,101 @@ def assign_base_supports(m):
 
         return None
 
-    count = 0
-    errors = 0
+    # Probar SetRestraint con el primer punto en z=0 para ver que formato acepta
+    # COM a veces rechaza [True]*6 pero acepta [1,1,1,1,1,1]
+    restraint_formats = [
+        ([True, True, True, True, True, True], "bool list"),
+        ([1, 1, 1, 1, 1, 1], "int list"),
+        ((True, True, True, True, True, True), "bool tuple"),
+    ]
+
+    # Primero: encontrar todos los puntos en z=0
+    base_points = []
     for pt in point_names:
         try:
             coord = m.PointObj.GetCoordCartesian(pt)
             z = extract_z(coord)
-
             if z is not None and abs(z) < 0.01:
-                ret = m.PointObj.SetRestraint(pt, [True] * 6)
-                if ret == 0:
-                    count += 1
+                base_points.append(pt)
         except Exception:
-            errors += 1
+            pass
 
-    if count == 0 and total > 0:
-        # Fallback: probar con 4 argumentos
-        print("  Metodo 1 no encontro puntos en z=0. Probando con 4 args...")
-        for pt in point_names:
-            try:
-                coord = m.PointObj.GetCoordCartesian(pt, 0.0, 0.0, 0.0)
-                z = extract_z(coord)
-                if z is not None and abs(z) < 0.01:
-                    ret = m.PointObj.SetRestraint(pt, [True] * 6)
-                    if ret == 0:
-                        count += 1
-            except Exception:
-                pass
+    print(f"  Puntos en z=0: {len(base_points)}")
 
-    if count == 0 and total > 0:
-        # Ultimo fallback: asignar restriccion a TODOS los puntos que esten
-        # en la elevacion minima del modelo
-        print("  Fallback: buscando elevacion minima...")
+    if len(base_points) == 0:
+        # Fallback: buscar elevacion minima
+        print("  Buscando elevacion minima...")
         z_vals = []
-        for pt in list(point_names)[:50]:  # muestra de 50
+        for pt in list(point_names)[:100]:
             try:
                 coord = m.PointObj.GetCoordCartesian(pt)
                 z = extract_z(coord)
                 if z is not None:
-                    z_vals.append(z)
+                    z_vals.append((z, pt))
             except Exception:
                 pass
-
         if z_vals:
-            z_min = min(z_vals)
-            print(f"  Z minima encontrada: {z_min:.3f} m")
+            z_min = min(z_vals, key=lambda x: x[0])[0]
+            print(f"  Z minima: {z_min:.3f} m")
             for pt in point_names:
                 try:
                     coord = m.PointObj.GetCoordCartesian(pt)
                     z = extract_z(coord)
                     if z is not None and abs(z - z_min) < 0.01:
-                        ret = m.PointObj.SetRestraint(pt, [True] * 6)
-                        if ret == 0:
-                            count += 1
+                        base_points.append(pt)
                 except Exception:
                     pass
+            print(f"  Puntos en z_min: {len(base_points)}")
+
+    if len(base_points) == 0:
+        print("[WARN] No se encontraron puntos en la base!")
+        print("  >>> MANUAL: Select > Properties > Points at z=0")
+        print("      Assign > Joint > Restraints > Fixed")
+        return
+
+    # Probar cada formato de restraint con el primer punto
+    working_format = None
+    test_pt = base_points[0]
+    for fmt, desc in restraint_formats:
+        try:
+            ret = m.PointObj.SetRestraint(test_pt, fmt)
+            print(f"  [DEBUG] SetRestraint('{test_pt}', {desc}): ret={ret}")
+            if ret == 0:
+                working_format = fmt
+                break
+            # ret != 0 pero no excepcion: probar siguiente formato
+        except Exception as e:
+            print(f"  [DEBUG] SetRestraint {desc}: {e}")
+
+    if working_format is None:
+        # Intentar con ItemType parameter
+        for fmt, desc in restraint_formats:
+            try:
+                ret = m.PointObj.SetRestraint(test_pt, fmt, 0)  # 0 = Object
+                print(f"  [DEBUG] SetRestraint(3 args, {desc}): ret={ret}")
+                if ret == 0:
+                    working_format = fmt
+                    restraint_formats = [(fmt, desc)]  # recordar que necesita 3 args
+                    break
+            except Exception as e:
+                print(f"  [DEBUG] SetRestraint 3 args {desc}: {e}")
+
+    if working_format is None:
+        print("[ERROR] SetRestraint no funciona con ningun formato")
+        print("  >>> MANUAL: Select all base points > Assign > Joint > Restraints > Fixed")
+        return
+
+    # Aplicar a todos los puntos base
+    count = 0
+    for pt in base_points:
+        try:
+            ret = m.PointObj.SetRestraint(pt, working_format)
+            if ret == 0:
+                count += 1
+        except Exception:
+            pass
 
     print(f"[OK] {count} puntos empotrados en la base")
-    if errors > 0:
-        print(f"  [WARN] {errors} errores en GetCoordCartesian")
 
 
 def remove_all_diaphragms(m):
