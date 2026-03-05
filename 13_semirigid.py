@@ -3,8 +3,11 @@
 
 SaveAs → quitar diafragma rigido → re-analizar → mostrar resultados.
 Produce: Edificio1_SemiRigido.edb
+
+FIX v3: Import correcto de 12_results (no 'import_helper').
 """
 import os
+import importlib
 import time
 from config_helper import get_model, set_units_tonf_m
 from config import LOSA_NAME
@@ -23,7 +26,6 @@ def remove_diaphragm(m):
 
     count = 0
     for area_name in area_names:
-        # Verificar si es losa
         try:
             prop_result = m.AreaObj.GetProperty(area_name)
             prop_name = str(prop_result[0]) if isinstance(prop_result, (list, tuple)) else str(prop_result)
@@ -33,7 +35,7 @@ def remove_diaphragm(m):
         if LOSA_NAME not in prop_name:
             continue
 
-        # Intentar remover diafragma con varias opciones
+        # Intentar remover diafragma
         for dname in ['None', '']:
             try:
                 ret = m.AreaObj.SetDiaphragm(area_name, dname)
@@ -42,15 +44,6 @@ def remove_diaphragm(m):
                     break
             except Exception:
                 continue
-
-        # Si ninguno funciono, intentar con None (Python None)
-        if count == 0:
-            try:
-                ret = m.AreaObj.SetDiaphragm(area_name, None)
-                if ret == 0:
-                    count += 1
-            except Exception:
-                pass
 
     return count
 
@@ -61,7 +54,7 @@ def main():
 
     print("\n--- Generar variante semi-rigida ---")
 
-    # 1. SaveAs con nuevo nombre
+    # 1. SaveAs
     script_dir = os.path.dirname(os.path.abspath(__file__))
     edb_semi = os.path.join(script_dir, 'Edificio1_SemiRigido.edb')
 
@@ -73,14 +66,14 @@ def main():
         print(f"  [ERROR] Save: {e}")
         return
 
-    # 2. Remover diafragma rigido
+    # 2. Remover diafragma
     print("\n  Removiendo diafragma rigido...")
     count = remove_diaphragm(m)
     print(f"  Diafragma removido de {count} losas")
 
     if count == 0:
-        print("  [WARN] No se pudo remover diafragma de ninguna losa")
-        print("  >>> MANUAL: Para cada losa, Edit > Assign > Shell > Diaphragm > None")
+        print("  [WARN] No se pudo remover diafragma")
+        print("  >>> MANUAL: Assign > Shell > Diaphragm > None")
         return
 
     # 3. Re-guardar
@@ -100,21 +93,14 @@ def main():
         print(f"  [WARN] RunAnalysis: {e}")
         print("  >>> Ejecutar manualmente: Analyze > Run Analysis")
 
-    # 5. Mostrar resultados basicos
+    # 5. Resultados basicos
     print("\n  Resultados modelo semi-rigido:")
     try:
-        from import_helper import show_modal_results, show_base_shear
-        show_modal_results(m)
-        show_base_shear(m)
-    except ImportError:
-        # Si no se puede importar 12_results, mostrar basico
-        try:
-            m.Results.Setup.DeselectAllCasesAndCombosForOutput()
-            m.Results.Setup.SetCaseSelectedForOutput('Modal')
-            result = m.Results.ModalParticipatingMassRatios()
-            print(f"  Modal result: {result}")
-        except Exception:
-            print("  >>> Ver resultados en ETABS: Display > Show Tables")
+        mod_results = importlib.import_module('12_results')
+        mod_results.show_modal_results(m)
+        mod_results.show_base_shear(m)
+    except Exception:
+        print("  >>> Ver resultados en ETABS: Display > Show Tables")
 
     print("\n=== 13_semirigid COMPLETADO ===")
     print(f"  Archivo: {edb_semi}")

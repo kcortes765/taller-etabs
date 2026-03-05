@@ -36,23 +36,50 @@ python diag.py
 python run_all.py
 ```
 
-## Pipeline (13 pasos)
+## Pipeline (13 pasos en 4 fases)
 
+### Fase 1: Geometria (critica)
 | Paso | Script | Que hace |
 |------|--------|----------|
-| 1 | 01_init_model.py | 20 pisos (3.4m + 19x2.6m = 52.8m) |
+| 1 | 01_init_model.py | 20 pisos + guarda .edb inmediatamente |
 | 2 | 02_materials_sections.py | G30, A630-420H, secciones |
-| 3 | 03_walls.py | ~960 muros (30cm y 20cm) |
-| 4 | 04_beams.py | ~400 vigas VI20/60 |
-| 5 | 05_slabs.py | ~700 losas 15cm |
+| 3 | 03_walls.py | ~960 muros (con verificacion post-creacion) |
+| 4 | 04_beams.py | ~400 vigas (con verificacion) |
+| 5 | 05_slabs.py | ~700 losas (con verificacion) |
 | 6 | 06_loads.py | PP, SCP, SCT, TERP, TERT, SEx, SEy |
 | 7 | 07_diaphragm_supports.py | Diafragma rigido + empotramientos base |
-| 8 | 08_spectrum_cases.py | Espectro NCh433, modal 60 modos, RS SEx/SEy, combos NCh3171 |
-| 9 | 09_torsion_cases.py | Torsion accidental: caso a (ecc 5%) + caso b forma 2 |
+| 7b | 07b_save_checkpoint.py | **VERIFICACION COMPLETA** + checkpoint |
+
+### Fase 2: Analisis
+| Paso | Script | Que hace |
+|------|--------|----------|
+| 8 | 08_spectrum_cases.py | Espectro NCh433, modal, mass source, combos |
+| 9 | 09_torsion_cases.py | Torsion caso a (ecc 5%) + caso b forma 2 |
 | 10 | 10_save_run.py | Guardar .EDB + Run Analysis |
-| 11 | 11_adjust_Rstar.py | Leer T*, calcular R* DS61, re-escalar RS, re-analizar |
-| 12 | 12_results.py | Resumen: periodos, corte basal, drift, peso sismico |
-| 13 | 13_semirigid.py | SaveAs sin diafragma rigido → Edificio1_SemiRigido.edb |
+
+### Fase 3: Post-proceso
+| Paso | Script | Que hace |
+|------|--------|----------|
+| 11 | 11_adjust_Rstar.py | T* → R* DS61 → re-escalar RS → re-analizar |
+| 12 | 12_results.py | Periodos, corte basal, drift, peso sismico |
+
+### Fase 4: Variante
+| Paso | Script | Que hace |
+|------|--------|----------|
+| 13 | 13_semirigid.py | Edificio1_SemiRigido.edb (sin diafragma) |
+
+## Bug principal corregido (v3)
+
+**Problema**: La API reportaba ~2060 elementos creados, pero ETABS los mostraba vacios.
+
+**Causa**: `Helper.CreateObject()` lanzaba una instancia INVISIBLE de ETABS.
+Los elementos se creaban en la instancia fantasma, no en la ventana que el usuario veia.
+
+**Fix**:
+1. Priorizar `GetActiveObject` (conecta al ETABS visible)
+2. Si necesita crear instancia nueva, FORZAR `obj.Visible = True`
+3. Verificacion post-creacion en cada paso de geometria
+4. Paso 7b aborta si no se verifican elementos
 
 ## Los 6 casos de analisis del enunciado
 
@@ -67,15 +94,12 @@ python run_all.py
 
 ## Caso b) Forma 1 — Instrucciones manuales
 
-La Forma 1 requiere desplazar fisicamente el centro de masa ±5% de la
-dimension perpendicular. En ETABS:
-
-1. Abrir el modelo (Edificio1.edb)
+1. Abrir Edificio1.edb
 2. Define > Diaphragm Eccentricity Overrides
-3. Para cada piso, shift el CM:
+3. Para cada piso, shift CM:
    - Sismo X: ΔCM_y = ±0.05 × 13.821m = ±0.691m
    - Sismo Y: ΔCM_x = ±0.05 × 38.505m = ±1.925m
-4. Crear RS cases separados para cada combinacion de signo
+4. Crear RS cases separados
 5. Correr analisis
 
 ## Archivos generados
@@ -89,26 +113,15 @@ dimension perpendicular. En ETABS:
 ## Si algo falla
 
 ### Espectro no se define via API
-Importar manualmente:
-1. Define > Functions > Response Spectrum > User Defined
-2. Nombre: `Espectro_NCh433`
-3. Importar desde `espectro_nch433.txt` (columna 1: T, columna 2: Sa/g)
+Define > Functions > Response Spectrum > From File > espectro_nch433.txt
 
 ### Mass source no se define via API
-1. Define > Mass Source
-2. Include Element Self Mass: SI
-3. Agregar: TERP factor 1.0, SCP factor 0.25
-
-### 0 empotramientos
-El script imprime [DEBUG] con el formato de GetCoordCartesian.
-Si los puntos no se empotran:
-1. Select > By Properties > Points at z=0
-2. Assign > Joint > Restraints > Fixed
+Define > Mass Source > Self Mass: SI + TERP: 1.0 + SCP: 0.25
 
 ### Conexion falla
 1. `python diag.py` — ver que metodos funcionan
 2. Matar TODOS los ETABS, abrir solo v19, esperar 20s
-3. Si nada funciona: `"...\ETABS.exe" /regserver` como admin
+3. Si registry apunta a v21: `"...\ETABS 19\ETABS.exe" /regserver` como admin
 
 ## Parametros sismicos (Antofagasta Zona 3, Suelo C)
 
@@ -123,11 +136,3 @@ Si los puntos no se empotran:
 | Ro | 11 (muros HA) |
 | I | 1.0 (oficinas) |
 | ξ | 5% |
-
-## Despues del pipeline
-
-1. Verificar vista 3D en ETABS
-2. Verificar peso sismico (~1 tonf/m2/piso)
-3. Verificar drift < 0.002 en CM
-4. Si mass source o espectro fallaron → definir manualmente
-5. Diseño de muros: Section Designer en ETABS o SAP2000 para curvas M-φ

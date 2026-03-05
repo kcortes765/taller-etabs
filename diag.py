@@ -2,6 +2,8 @@
 diag.py — Diagnostico COMPLETO de conexion ETABS.
 Muestra procesos, instalaciones, registro COM, y prueba cada metodo.
 
+FIX v3: Muestra PID del proceso, verifica visibilidad, imprime archivo modelo.
+
 USO: python diag.py
 """
 import subprocess
@@ -34,7 +36,7 @@ def main():
             capture_output=True, text=True, timeout=10
         )
         out = r.stdout.strip()
-        print(out if out else "  (ninguno)")
+        print(out if out else "  (ninguno corriendo)")
     except Exception as e:
         print(f"  Error: {e}")
 
@@ -50,7 +52,7 @@ def main():
             if tlbs:
                 print(f"  v{ver} TLBs: {', '.join(tlbs)}")
 
-    # --- 3. Python + comtypes ---
+    # --- 3. Python ---
     section("3. PYTHON")
     print(f"  Python: {sys.executable}")
     print(f"  Version: {sys.version.split()[0]}")
@@ -63,18 +65,9 @@ def main():
                      if not f.startswith('__') and f != '__pycache__']
         print(f"  comtypes: instalado")
         print(f"  comtypes/gen: {len(gen_files)} archivos cached")
-        if gen_files:
-            print(f"    {', '.join(gen_files[:5])}{'...' if len(gen_files) > 5 else ''}")
     except ImportError:
         print("  [ERROR] comtypes NO instalado: pip install comtypes")
         return
-
-    # win32com
-    try:
-        import win32com.client
-        print(f"  pywin32: instalado")
-    except ImportError:
-        print(f"  pywin32: NO (opcional: pip install pywin32)")
 
     # --- 4. Registry COM ---
     section("4. REGISTRO COM")
@@ -94,6 +87,9 @@ def main():
                 if r2.returncode == 0:
                     server = r2.stdout.strip().split('REG_SZ')[-1].strip()
                     print(f"    Server: {server}")
+                    # Verificar si apunta a v19 o v21
+                    if '21' in server:
+                        print(f"    [WARN] Registrado como v21 — puede causar conflicto con v19")
             else:
                 print(f"  {progid}: NO REGISTRADO")
         except Exception as e:
@@ -119,22 +115,36 @@ def main():
 
     import comtypes.client
 
-    # --- 6. Test conexion (MANTENER REFS VIVAS) ---
+    # --- 6. Test conexion ---
     section("6. TEST CONEXION")
 
-    # Variables globales para mantener COM refs vivas
     results = []
 
     def _test_method(label, connect_func):
         """Prueba un metodo y reporta resultado."""
         try:
-            refs = connect_func()  # debe retornar dict con 'model' y refs a mantener
+            refs = connect_func()
             m = refs['model']
             u = m.GetPresentUnits()
-            m.SetPresentUnits(9)
-            ret = m.InitializeNewModel(9)
-            ret2 = m.File.NewBlank()
-            print(f"  [{label}] OK — Units={u}, Init={ret}, NewBlank={ret2}")
+
+            # Verificar archivo del modelo
+            try:
+                fname = m.GetModelFilename()
+            except Exception:
+                fname = '?'
+
+            # Verificar visibilidad
+            visible = '?'
+            try:
+                obj = refs.get('obj')
+                if obj:
+                    visible = getattr(obj, 'Visible', '?')
+            except Exception:
+                pass
+
+            print(f"  [{label}] OK")
+            print(f"    Units={u}, File={fname or '(vacio)'}, Visible={visible}")
+
             results.append((label, True, refs))
             return True
         except Exception as e:
@@ -142,47 +152,40 @@ def main():
             results.append((label, False, None))
             return False
 
-    # A. CreateObject
-    def _try_create():
-        obj = comtypes.client.CreateObject('CSI.ETABS.API.ETABSObject')
-        m = obj.SapModel
-        return {'model': m, 'obj': obj}
-
-    _test_method('A-CreateObject', _try_create)
-
-    # B. GetActiveObject
+    # A. GetActiveObject
     def _try_active():
         obj = comtypes.client.GetActiveObject('CSI.ETABS.API.ETABSObject')
         m = obj.SapModel
         return {'model': m, 'obj': obj}
+    _test_method('A-GetActiveObject', _try_active)
 
-    _test_method('B-GetActiveObject', _try_active)
-
-    # C. Helper.GetObject v19
+    # B. Helper.GetObject v19
     if os.path.exists(ETABS19_EXE):
         def _try_helper_v19():
             h = comtypes.client.CreateObject('ETABSv1.Helper')
             import comtypes.gen.ETABSv1 as ETABSv1
             h = h.QueryInterface(ETABSv1.cHelper)
             obj = h.GetObject(ETABS19_EXE)
+            if obj is None:
+                raise Exception("GetObject retorno None")
             m = obj.SapModel
             return {'model': m, 'obj': obj, 'helper': h}
+        _test_method('B-Helper.GetObject(v19)', _try_helper_v19)
 
-        _test_method('C-Helper.GetObject(v19)', _try_helper_v19)
-
-    # D. Helper.GetObject v21
+    # C. Helper.GetObject v21
     if os.path.exists(ETABS21_EXE):
         def _try_helper_v21():
             h = comtypes.client.CreateObject('ETABSv1.Helper')
             import comtypes.gen.ETABSv1 as ETABSv1
             h = h.QueryInterface(ETABSv1.cHelper)
             obj = h.GetObject(ETABS21_EXE)
+            if obj is None:
+                raise Exception("GetObject retorno None")
             m = obj.SapModel
             return {'model': m, 'obj': obj, 'helper': h}
+        _test_method('C-Helper.GetObject(v21)', _try_helper_v21)
 
-        _test_method('D-Helper.GetObject(v21)', _try_helper_v21)
-
-    # E. Helper.CreateObject v19 (lanza nueva instancia)
+    # D. Helper.CreateObject v19 (crea nueva instancia)
     if os.path.exists(ETABS19_EXE):
         def _try_helper_create_v19():
             h = comtypes.client.CreateObject('ETABSv1.Helper')
@@ -193,11 +196,14 @@ def main():
                 obj.ApplicationStart()
             except Exception:
                 pass
-            time.sleep(3)
+            try:
+                obj.Visible = True
+            except Exception:
+                pass
+            time.sleep(5)
             m = obj.SapModel
             return {'model': m, 'obj': obj, 'helper': h}
-
-        _test_method('E-Helper.CreateObject(v19)', _try_helper_create_v19)
+        _test_method('D-Helper.CreateObject(v19)', _try_helper_create_v19)
 
     # --- Resumen ---
     section("RESUMEN")
@@ -209,6 +215,14 @@ def main():
     if fail_methods:
         print(f"  FALLAN:    {', '.join(fail_methods)}")
 
+    # Advertencia sobre registro COM
+    if 'A-GetActiveObject' in fail_methods and any('Helper.CreateObject' in m for m in ok_methods):
+        print("\n  [WARN] GetActiveObject falla pero CreateObject funciona.")
+        print("  Esto significa que ETABS NO esta en el Running Object Table.")
+        print("  El pipeline creara una NUEVA instancia (visible).")
+        print("  Para evitar esto, registrar ETABS 19:")
+        print(f'  "{ETABS19_EXE}" /regserver')
+
     if not ok_methods:
         print("\n  NADA FUNCIONO. Probar:")
         print("  1. Cerrar TODO ETABS (taskkill /F /IM ETABS.exe)")
@@ -217,7 +231,8 @@ def main():
         print(f"\n  Si sigue fallando, registrar v19 como admin:")
         print(f'  "{ETABS19_EXE}" /regserver')
     else:
-        print(f"\n  config_helper.py usara: {ok_methods[0]}")
+        recommended = ok_methods[0]
+        print(f"\n  config_helper.py usara: {recommended}")
         print("  Puedes correr: python run_all.py")
 
 

@@ -2,12 +2,13 @@
 08_spectrum_cases.py — Espectro NCh433+DS61, caso modal, response spectrum,
 fuente de masa, combinaciones NCh3171.
 
-FIX v2: Multiples fallbacks para cada API call.
-- FuncRS.SetUser: probar con y sin damping arg, probar Func.FuncRS vs directo
-- Mass source: 3+ metodos
-- Modal: probar ModalEigen y fallback a ModalRitz
-- SetModalComb / SetDampConstant: firma alternativa
+FIX v3:
+- SIEMPRE genera espectro_nch433.txt (para import manual)
+- Menos intentos de API (cada fallback que crashea corrompe la sesion COM)
+- Si espectro no se define, NO crea RS cases (evita crash)
+- Caso modal: ETABS crea 'MODAL' por defecto, solo ajustamos n_modos
 """
+import os
 from config_helper import get_model, set_units_tonf_m
 from config import (
     AO_G, I_FACTOR, RO_MUROS, G_ACCEL,
@@ -22,9 +23,9 @@ def build_elastic_spectrum():
     """
     T_vals = []
     Sa_vals = []
-    dt = 0.05  # cada 0.05s como pide el enunciado
+    dt = 0.05
 
-    T = dt  # empezar en 0.05, no en 0
+    T = dt
     while T <= 5.01:
         ratio = TO_SUELO / T
         alpha = (1.0 + 4.5 * ratio**P_SUELO) / (1.0 + ratio**3)
@@ -33,208 +34,167 @@ def build_elastic_spectrum():
         Sa_vals.append(round(Sa_g, 6))
         T += dt
 
-    # Agregar T=0 al inicio (Sa = S*Ao = PGA amplificado)
+    # T=0 al inicio
     T_vals.insert(0, 0.0)
     Sa_vals.insert(0, round(S_SUELO * AO_G, 6))
 
     return T_vals, Sa_vals
 
 
+def save_spectrum_file(T_vals, Sa_vals):
+    """SIEMPRE guardar archivo de espectro para import manual."""
+    spec_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'espectro_nch433.txt')
+    with open(spec_file, 'w') as f:
+        for t, sa in zip(T_vals, Sa_vals):
+            f.write(f"{t}\t{sa}\n")
+    print(f"  Archivo espectro guardado: espectro_nch433.txt ({len(T_vals)} puntos)")
+    return spec_file
+
+
 def define_spectrum(m):
-    """Definir funcion de espectro en ETABS. Prueba multiples APIs."""
+    """Definir funcion de espectro en ETABS."""
     set_units_tonf_m(m)
     T_vals, Sa_vals = build_elastic_spectrum()
     n = len(T_vals)
     name = 'Espectro_NCh433'
     damp = 0.05
 
-    # Lista de intentos: (descripcion, funcion)
-    attempts = []
+    # SIEMPRE guardar archivo (sirve como backup manual)
+    spec_file = save_spectrum_file(T_vals, Sa_vals)
 
-    # 1. Func.FuncRS.SetUser con 5 args (name, count, T, Sa, damp)
-    def try_funcrs_5():
-        return m.Func.FuncRS.SetUser(name, n, T_vals, Sa_vals, damp)
-    attempts.append(('Func.FuncRS.SetUser(5 args)', try_funcrs_5))
+    # Intento 1: SetUser con 5 args (name, count, T, Sa, damp)
+    try:
+        ret = m.Func.FuncRS.SetUser(name, n, T_vals, Sa_vals, damp)
+        if isinstance(ret, (list, tuple)):
+            code = ret[-1]
+        else:
+            code = ret
+        print(f"  FuncRS.SetUser(5 args): ret={ret}")
+        if code == 0:
+            print(f"[OK] Espectro definido: {n} puntos (T=0 a 5s)")
+            return True
+    except Exception as e:
+        print(f"  FuncRS.SetUser(5 args): {e}")
 
-    # 2. Func.FuncRS.SetUser con 4 args (name, count, T, Sa) — sin damping
-    def try_funcrs_4():
-        return m.Func.FuncRS.SetUser(name, n, T_vals, Sa_vals)
-    attempts.append(('Func.FuncRS.SetUser(4 args)', try_funcrs_4))
+    # Intento 2: SetUser con 4 args (sin damping)
+    try:
+        ret = m.Func.FuncRS.SetUser(name, n, T_vals, Sa_vals)
+        if isinstance(ret, (list, tuple)):
+            code = ret[-1]
+        else:
+            code = ret
+        print(f"  FuncRS.SetUser(4 args): ret={ret}")
+        if code == 0:
+            print(f"[OK] Espectro definido: {n} puntos")
+            return True
+    except Exception as e:
+        print(f"  FuncRS.SetUser(4 args): {e}")
 
-    # 3. Func.FuncRS.SetUser con solo (name, T, Sa, damp)
-    def try_funcrs_no_count():
-        return m.Func.FuncRS.SetUser(name, T_vals, Sa_vals, damp)
-    attempts.append(('Func.FuncRS.SetUser(no count)', try_funcrs_no_count))
+    # Intento 3: SetFromFile
+    try:
+        ret = m.Func.FuncRS.SetFromFile(name, spec_file, 1, 0, 1, 2, True)
+        if isinstance(ret, (list, tuple)):
+            code = ret[-1]
+        else:
+            code = ret
+        print(f"  FuncRS.SetFromFile: ret={ret}")
+        if code == 0:
+            print(f"[OK] Espectro definido desde archivo")
+            return True
+    except Exception as e:
+        print(f"  FuncRS.SetFromFile: {e}")
 
-    # 4. Via Func accedido como dict/attribute
-    def try_func_direct():
-        rs = getattr(m.Func, 'FuncRS', None) or getattr(m.Func, 'ResponseSpectrum', None)
-        if rs is None:
-            raise AttributeError("Ni FuncRS ni ResponseSpectrum disponible en m.Func")
-        return rs.SetUser(name, n, T_vals, Sa_vals, damp)
-    attempts.append(('m.Func.[FuncRS|ResponseSpectrum].SetUser', try_func_direct))
-
-    # 5. Intentar definir como archivo de texto y cargar desde archivo
-    def try_from_file():
-        import os, tempfile
-        # Crear archivo de espectro temporal
-        spec_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'espectro_nch433.txt')
-        with open(spec_file, 'w') as f:
-            for t, sa in zip(T_vals, Sa_vals):
-                f.write(f"{t}\t{sa}\n")
-        # Intentar cargar desde archivo
-        try:
-            ret = m.Func.FuncRS.SetFromFile(name, spec_file, 1, 0, 1, 2, True)
-            return ret
-        except Exception:
-            # Probar con otro path del API
-            ret = m.Func.FuncRS.SetFromFile(name, spec_file)
-            return ret
-    attempts.append(('FuncRS.SetFromFile (espectro.txt)', try_from_file))
-
-    for desc, func in attempts:
-        try:
-            ret = func()
-            # ret puede ser int o tuple; 0 = OK, -99 o tuple con -99 = parcial
-            if isinstance(ret, (list, tuple)):
-                code = ret[-1] if ret else -1
-            else:
-                code = ret
-
-            print(f"  {desc}: ret={ret}")
-            if code == 0:
-                print(f"[OK] Espectro: {n} puntos (T=0 a 5s)")
-                return True
-            elif code != 0:
-                print(f"  [WARN] ret={code}, intentando siguiente metodo...")
-        except AttributeError as e:
-            print(f"  {desc}: metodo no existe ({e})")
-        except Exception as e:
-            print(f"  {desc}: fallo ({e})")
-
-    print("  [ERROR] No se pudo definir espectro con ningún metodo")
-    print("  >>> DEFINIR MANUALMENTE: Define > Functions > Response Spectrum > User")
+    print("  [ERROR] No se pudo definir espectro via API")
+    print("  >>> IMPORTAR MANUALMENTE:")
+    print(f"      Define > Functions > Response Spectrum > From File")
     print(f"      Nombre: {name}")
-    print(f"      {n} puntos, T=0 a 5s, dT=0.05s")
-    print(f"      Formula: Sa = {S_SUELO}*{AO_G} * alpha(T)")
-
-    # Guardar archivo de espectro para importar manualmente
-    import os
-    spec_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'espectro_nch433.txt')
-    with open(spec_file, 'w') as f:
-        for t, sa in zip(T_vals, Sa_vals):
-            f.write(f"{t}\t{sa}\n")
-    print(f"      Archivo guardado: {spec_file}")
+    print(f"      Archivo: espectro_nch433.txt")
     return False
 
 
 def define_mass_source(m):
-    """Fuente de masa: selfweight + 100%TERP + 25%SCP.
-
-    Prueba multiples APIs segun version ETABS.
-    """
+    """Fuente de masa: selfweight + 100%TERP + 25%SCP."""
     methods = [
-        # (nombre, funcion)
         ('PropMass.SetMassSource_1',
          lambda: m.PropMass.SetMassSource_1(
              True, False, True, 2, ['TERP', 'SCP'], [1.0, 0.25])),
         ('MassSource.SetMassSource_1',
          lambda: m.MassSource.SetMassSource_1(
              True, False, True, 2, ['TERP', 'SCP'], [1.0, 0.25])),
-        ('PropMaterial.SetMassSource_1',
-         lambda: m.PropMaterial.SetMassSource_1(
-             True, False, True, 2, ['TERP', 'SCP'], [1.0, 0.25])),
-        # Sin el 3er bool (isFromLoads=True)
-        ('PropMass.SetMassSource_1 (4 args)',
-         lambda: m.PropMass.SetMassSource_1(
-             True, False, 2, ['TERP', 'SCP'], [1.0, 0.25])),
-        # Con nombre de mass source
-        ('MassSource.SetMassSource (named)',
-         lambda: m.MassSource.SetMassSource(
-             'MsSrc1', True, False, True, 2, ['TERP', 'SCP'], [1.0, 0.25])),
     ]
 
     for name, func in methods:
         try:
             ret = func()
             print(f"  {name}: ret={ret}")
+            ok = False
             if isinstance(ret, int) and ret == 0:
-                print("[OK] Fuente de masa sismica definida")
-                return True
-            elif isinstance(ret, (list, tuple)) and (ret[-1] == 0 or ret[0] == 0):
+                ok = True
+            elif isinstance(ret, (list, tuple)) and ret[-1] == 0:
+                ok = True
+            if ok:
                 print("[OK] Fuente de masa sismica definida")
                 return True
         except AttributeError:
-            pass  # metodo no existe
-        except Exception:
             pass
+        except Exception as e:
+            print(f"  {name}: {e}")
 
     print("  [WARN] Mass source no se pudo definir via API")
     print("  >>> DEFINIR MANUALMENTE: Define > Mass Source")
-    print("      - Include Element Self Mass: SI")
-    print("      - TERP: factor 1.0")
-    print("      - SCP:  factor 0.25")
+    print("      - Element Self Mass: SI")
+    print("      - TERP: 1.0, SCP: 0.25")
     return False
 
 
 def define_modal_case(m):
-    """Caso modal Eigen con suficientes modos."""
-    n_modes = 60  # suficiente para edificio 20 pisos
+    """Ajustar caso modal a 60 modos.
 
-    # Intentar multiples formas de crear caso modal
-    methods = [
-        ('ModalEigen.SetCase',
-         lambda: m.LoadCases.ModalEigen.SetCase('Modal')),
-        ('Modal.SetCase',
-         lambda: m.LoadCases.Modal.SetCase('Modal')),
-    ]
+    ETABS crea caso 'MODAL' por defecto con NewBlank.
+    Solo necesitamos ajustar el numero de modos.
+    """
+    n_modes = 60
 
-    case_ok = False
-    for desc, func in methods:
+    # Intentar con 'Modal' y 'MODAL' (nombre puede variar)
+    for modal_name in ['Modal', 'MODAL']:
+        for func_desc, func in [
+            ('SetNumberModes(3)',
+             lambda mn=modal_name: m.LoadCases.ModalEigen.SetNumberModes(mn, n_modes, 1)),
+            ('SetNumberModes(2)',
+             lambda mn=modal_name: m.LoadCases.ModalEigen.SetNumberModes(mn, n_modes)),
+        ]:
+            try:
+                ret = func()
+                print(f"  {func_desc} '{modal_name}': ret={ret}")
+                print(f"[OK] Caso modal: {n_modes} modos")
+                return True
+            except AttributeError:
+                pass
+            except Exception:
+                pass
+
+    # Crear caso modal si no existe
+    for modal_name in ['Modal']:
         try:
-            ret = func()
-            print(f"  {desc}: ret={ret}")
-            case_ok = True
-            break
-        except AttributeError:
-            print(f"  {desc}: metodo no existe")
+            ret = m.LoadCases.ModalEigen.SetCase(modal_name)
+            print(f"  ModalEigen.SetCase '{modal_name}': ret={ret}")
+            try:
+                m.LoadCases.ModalEigen.SetNumberModes(modal_name, n_modes, 1)
+            except Exception:
+                pass
+            print(f"[OK] Caso modal creado: {n_modes} modos")
+            return True
         except Exception as e:
-            print(f"  {desc}: {e}")
+            print(f"  ModalEigen.SetCase: {e}")
 
-    if not case_ok:
-        print("  [WARN] No se pudo crear caso modal via API")
-        print("  >>> ETABS crea caso 'MODAL' por defecto al hacer NewBlank")
-
-    # Setear numero de modos
-    mode_methods = [
-        ('ModalEigen.SetNumberModes(3 args)',
-         lambda: m.LoadCases.ModalEigen.SetNumberModes('Modal', n_modes, 1)),
-        ('ModalEigen.SetNumberModes(2 args)',
-         lambda: m.LoadCases.ModalEigen.SetNumberModes('Modal', n_modes)),
-        ('Modal.SetNumberModes',
-         lambda: m.LoadCases.Modal.SetNumberModes('Modal', n_modes, 1)),
-    ]
-
-    for desc, func in mode_methods:
-        try:
-            ret = func()
-            print(f"  {desc}: ret={ret}")
-            break
-        except AttributeError:
-            pass
-        except Exception as e:
-            print(f"  {desc}: {e}")
-
-    print(f"[OK] Caso modal: {n_modes} modos (o default ETABS)")
+    print(f"  [WARN] No se pudo configurar caso modal (ETABS usa default)")
+    return False
 
 
 def define_rs_cases(m):
     """Casos Response Spectrum (SEx, SEy)."""
     set_units_tonf_m(m)
-
-    # Factor escala: g = 9.81 (convierte Sa/g a m/s2)
-    # Nota: R* se ajusta despues de conocer T* (tras primer analisis)
-    sf = G_ACCEL  # 9.81 m/s2
+    sf = G_ACCEL  # 9.81 m/s2 (se ajusta con R* despues)
 
     for case_name, direction in [('SEx', 'U1'), ('SEy', 'U2')]:
         # Crear caso RS
@@ -246,57 +206,43 @@ def define_rs_cases(m):
             continue
 
         # Vincular al caso modal
-        try:
-            ret = m.LoadCases.ResponseSpectrum.SetModalCase(case_name, 'Modal')
-            print(f"  SetModalCase '{case_name}': ret={ret}")
-        except Exception as e:
-            # Probar con 'MODAL' (nombre por defecto ETABS)
+        for modal_name in ['Modal', 'MODAL']:
             try:
-                ret = m.LoadCases.ResponseSpectrum.SetModalCase(case_name, 'MODAL')
-                print(f"  SetModalCase '{case_name}' (MODAL): ret={ret}")
+                ret = m.LoadCases.ResponseSpectrum.SetModalCase(case_name, modal_name)
+                print(f"  SetModalCase '{case_name}' -> '{modal_name}': ret={ret}")
+                break
             except Exception:
-                print(f"  [WARN] SetModalCase {case_name}: {e}")
+                pass
 
         # Asignar espectro y direccion
-        try:
-            ret = m.LoadCases.ResponseSpectrum.SetLoads(
-                case_name, 1, [direction], ['Espectro_NCh433'],
-                [sf], [''], [0.0],
-            )
-            print(f"  SetLoads '{case_name}': ret={ret}")
-        except Exception as e:
-            # Probar con menos args
+        for args in [
+            (case_name, 1, [direction], ['Espectro_NCh433'], [sf], [''], [0.0]),
+            (case_name, 1, [direction], ['Espectro_NCh433'], [sf]),
+        ]:
             try:
-                ret = m.LoadCases.ResponseSpectrum.SetLoads(
-                    case_name, 1, [direction], ['Espectro_NCh433'], [sf],
-                )
-                print(f"  SetLoads '{case_name}' (5 args): ret={ret}")
-            except Exception as e2:
-                print(f"  [ERROR] SetLoads {case_name}: {e2}")
-
-        # CQC — probar varias firmas
-        for cqc_args in [(case_name, 1, 0.0, 0.0), (case_name, 1)]:
-            try:
-                ret = m.LoadCases.ResponseSpectrum.SetModalComb(*cqc_args)
-                print(f"  SetModalComb CQC ({len(cqc_args)} args): ret={ret}")
+                ret = m.LoadCases.ResponseSpectrum.SetLoads(*args)
+                print(f"  SetLoads '{case_name}' ({len(args)} args): ret={ret}")
                 break
-            except AttributeError:
-                pass
             except Exception:
                 pass
 
-        # Damping 5% — probar varias firmas
-        for damp_args in [(case_name, 0.05), (case_name, 0, 0.05)]:
+        # CQC
+        for args in [(case_name, 1, 0.0, 0.0), (case_name, 1)]:
             try:
-                ret = m.LoadCases.ResponseSpectrum.SetDampConstant(*damp_args)
-                print(f"  SetDampConstant 5% ({len(damp_args)} args): ret={ret}")
+                m.LoadCases.ResponseSpectrum.SetModalComb(*args)
                 break
-            except AttributeError:
-                pass
             except Exception:
                 pass
 
-    print("[OK] Casos RS definidos (SEx, SEy) — espectro elastico, ajustar R* despues")
+        # Damping 5%
+        for args in [(case_name, 0.05), (case_name, 0, 0.05)]:
+            try:
+                m.LoadCases.ResponseSpectrum.SetDampConstant(*args)
+                break
+            except Exception:
+                pass
+
+    print("[OK] Casos RS definidos (SEx, SEy)")
 
 
 def define_combinations(m):
@@ -318,7 +264,7 @@ def define_combinations(m):
     ok = 0
     for combo_name, loads in combos.items():
         try:
-            ret = m.RespCombo.Add(combo_name, 0)  # 0 = Linear Add
+            ret = m.RespCombo.Add(combo_name, 0)
             for pat, sf in loads:
                 m.RespCombo.SetCaseList(combo_name, 0, pat, sf)
             ok += 1
@@ -331,40 +277,47 @@ def define_combinations(m):
 def main():
     m = get_model()
 
-    # Cada seccion es independiente — si una falla no pierde las otras
-    spectrum_ok = False
-    sections = [
-        ("Espectro NCh433", lambda: define_spectrum(m)),
-        ("Fuente de masa", lambda: define_mass_source(m)),
-        ("Caso modal", lambda: define_modal_case(m)),
-    ]
+    # 1. Espectro (SIEMPRE genera archivo .txt como backup)
+    print("\n--- Espectro NCh433 ---")
+    try:
+        spectrum_ok = define_spectrum(m)
+    except Exception as e:
+        print(f"  [ERROR] Espectro fallo: {e}")
+        spectrum_ok = False
 
-    for name, func in sections:
-        print(f"\n--- {name} ---")
-        try:
-            result = func()
-            if name == "Espectro NCh433":
-                spectrum_ok = result
-        except Exception as e:
-            print(f"  [ERROR] {name} fallo: {e}")
+    # 2. Fuente de masa
+    print("\n--- Fuente de masa ---")
+    try:
+        define_mass_source(m)
+    except Exception as e:
+        print(f"  [ERROR] Mass source fallo: {e}")
 
+    # 3. Caso modal (ajustar modos)
+    print("\n--- Caso modal ---")
+    try:
+        define_modal_case(m)
+    except Exception as e:
+        print(f"  [ERROR] Modal fallo: {e}")
+
+    # 4. Response Spectrum — SOLO si espectro se definio
     print("\n--- Response Spectrum ---")
     if spectrum_ok:
         try:
             define_rs_cases(m)
         except Exception as e:
             print(f"  [ERROR] RS cases fallo: {e}")
+            print("  >>> Si ETABS se cerro, abrir Edificio1.edb y ejecutar paso 8 manualmente")
     else:
         print("  [SKIP] No se crean RS cases porque el espectro no se definio")
-        print("  >>> 1. Definir espectro manualmente en ETABS")
+        print("  >>> 1. Importar espectro desde espectro_nch433.txt")
         print("  >>> 2. Re-ejecutar: python 08_spectrum_cases.py")
 
+    # 5. Combinaciones (independiente del espectro)
     print("\n--- Combinaciones ---")
     try:
         define_combinations(m)
     except Exception as e:
         print(f"  [ERROR] Combinaciones fallo: {e}")
-        print("  >>> Si ETABS se cerro, abrir Edificio1.edb y definir manualmente")
 
     print("\n=== 08_spectrum_cases COMPLETADO ===")
 

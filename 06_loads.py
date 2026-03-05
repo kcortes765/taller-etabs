@@ -1,5 +1,7 @@
 """
 06_loads.py — Definir patrones de carga y asignar cargas a losas.
+
+FIX v3: Mejor manejo de formatos COM, verificacion de cargas asignadas.
 """
 from config_helper import get_model, set_units_tonf_m
 from config import (
@@ -23,20 +25,44 @@ def define_load_patterns(m):
     ]
 
     for name, ltype, sw in patterns:
-        ret = m.LoadPatterns.Add(name, ltype, sw, True)
-        status = 'OK' if ret == 0 else f'ret={ret}'
-        print(f"  {name}: {status}")
+        try:
+            ret = m.LoadPatterns.Add(name, ltype, sw, True)
+            status = 'OK' if ret == 0 else f'ret={ret}'
+            print(f"  {name}: {status}")
+        except Exception as e:
+            print(f"  {name}: {e}")
 
     print("[OK] 7 patrones de carga definidos")
+
+
+def _extract_z(coord_result):
+    """Extraer Z de resultado COM GetCoordCartesian."""
+    if coord_result is None:
+        return None
+    if isinstance(coord_result, (int, float)):
+        return None
+
+    vals = list(coord_result) if isinstance(coord_result, tuple) else coord_result
+
+    if len(vals) == 4:
+        # (x, y, z, ret) o (ret, x, y, z)
+        if isinstance(vals[3], int) or (isinstance(vals[3], float) and vals[3] == 0.0):
+            return float(vals[2])
+        if isinstance(vals[0], int) and vals[0] == 0:
+            return float(vals[3])
+        return float(vals[2])
+
+    if len(vals) >= 3:
+        return float(vals[2])
+
+    return None
 
 
 def assign_loads(m):
     """Asignar cargas uniformes a losas segun piso tipo o techo."""
     set_units_tonf_m(m)
 
-    # Obtener todas las areas
     result = m.AreaObj.GetNameList()
-    # comtypes retorna: (count, names_array, ret_code) o similar
     if isinstance(result, (list, tuple)):
         n_areas = result[0] if isinstance(result[0], int) else 0
         area_names = result[1] if len(result) > 1 else []
@@ -46,34 +72,34 @@ def assign_loads(m):
 
     print(f"  Total areas: {n_areas}")
     if n_areas == 0:
+        print("  [WARN] No hay areas — verificar que pasos 3-5 crearon geometria")
         return
 
     # Cargas en tonf/m2
-    scp_tonf  = SCP_OFICINA / 1000.0   # 0.250
-    sct_tonf  = SCT_TECHO / 1000.0     # 0.100
-    terp_tonf = TERP_PISO / 1000.0     # 0.140
-    tert_tonf = TERT_TECHO / 1000.0    # 0.100
+    scp_tonf  = SCP_OFICINA / 1000.0
+    sct_tonf  = SCT_TECHO / 1000.0
+    terp_tonf = TERP_PISO / 1000.0
+    tert_tonf = TERT_TECHO / 1000.0
 
     z_techo = STORY_ELEVATIONS[-1]
     count_piso = 0
     count_techo = 0
 
     for area_name in area_names:
-        # Verificar seccion (solo asignar a losas, no muros)
+        # Solo asignar a losas, no muros
         try:
             prop_result = m.AreaObj.GetProperty(area_name)
-            # comtypes: (prop_name, ret) o (ret, prop_name)
             if isinstance(prop_result, (list, tuple)):
                 prop_name = str(prop_result[0])
             else:
                 prop_name = str(prop_result)
-        except:
+        except Exception:
             continue
 
         if LOSA_NAME not in prop_name:
             continue
 
-        # Obtener Z de la losa para distinguir techo de piso tipo
+        # Z de la losa para distinguir techo vs piso tipo
         try:
             pts_result = m.AreaObj.GetPoints(area_name)
             if isinstance(pts_result, (list, tuple)):
@@ -86,17 +112,14 @@ def assign_loads(m):
                 continue
 
             coord_result = m.PointObj.GetCoordCartesian(pt_names[0])
-            if isinstance(coord_result, (list, tuple)):
-                z = coord_result[2] if len(coord_result) > 2 else 0
-            else:
+            z = _extract_z(coord_result)
+            if z is None:
                 z = 0
-        except:
+        except Exception:
             continue
 
         is_techo = abs(z - z_techo) < 0.1
 
-        # Dir=6 = gravity (perpendicular a losa, hacia abajo)
-        # Replace=True para cada patron
         try:
             if is_techo:
                 m.AreaObj.SetLoadUniform(area_name, 'SCT',  -sct_tonf,  6, True, 'Global')

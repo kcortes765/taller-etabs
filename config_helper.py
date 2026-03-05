@@ -3,11 +3,11 @@ config_helper.py — Conexion a ETABS via COM.
 
 COMPATIBLE CON DUAL-INSTALL (v19 + v21).
 
-FIXES:
-1. Limpia comtypes.gen al inicio (previene type library stale de otra version)
-2. Mantiene TODOS los objetos COM en globales (previene garbage collection)
-3. Multiples metodos de conexion con reintentos
-4. Diagnostico claro si falla
+FIX v3 (2026-03-05):
+- NUNCA crear instancias invisibles — causa principal del bug "geometria fantasma"
+- Si CreateObject es necesario, FORZAR visibilidad (ApplicationStart + Visible=True)
+- Diagnostico automatico tras conexion (version, archivo, elementos)
+- Funciones de verificacion y refresco de vista
 """
 import os
 import sys
@@ -48,18 +48,15 @@ ETABS19_TLB = r"C:\Program Files\Computers and Structures\ETABS 19\ETABSv1.tlb"
 
 # ====================================================================
 # PASO 1: Cargar type library de ETABS 19 EXPLICITAMENTE.
-# Si no se hace esto, comtypes genera la TLB de v21 (registrada en COM),
-# y las firmas de metodos como SetStories no coinciden con v19.
 # ====================================================================
 if os.path.exists(ETABS19_TLB):
     try:
         comtypes.client.GetModule(ETABS19_TLB)
     except Exception:
-        pass  # Si falla, usara la TLB auto-generada
+        pass
 
 # ====================================================================
 # Estado global — mantener TODAS las refs COM vivas (evitar GC).
-# Si helper/obj se garbage-collectan, SapModel queda invalido.
 # ====================================================================
 _helper_ref = None
 _etabs_obj = None
@@ -75,8 +72,66 @@ def _test_model(m):
         return False
 
 
-def get_model(retries=5, wait=5):
-    """Conectar a ETABS. Intenta multiples metodos, reintenta si no esta listo."""
+def diagnose(m):
+    """Imprimir diagnostico de la conexion actual."""
+    print("  --- Diagnostico conexion ---")
+    try:
+        fname = m.GetModelFilename()
+        print(f"  Archivo modelo: {fname or '(sin guardar)'}")
+    except Exception:
+        print("  Archivo modelo: (no disponible)")
+
+    for obj_type, getter in [('Areas', 'AreaObj'), ('Frames', 'FrameObj'), ('Points', 'PointObj')]:
+        try:
+            result = getattr(m, getter).GetNameList()
+            if isinstance(result, (list, tuple)):
+                count = result[0] if isinstance(result[0], int) else 0
+            else:
+                count = '?'
+            print(f"  {obj_type}: {count}")
+        except Exception:
+            pass
+    print("  ---")
+
+
+def verify_elements(m):
+    """Verificar que existen elementos en el modelo. Retorna dict con conteos."""
+    counts = {}
+    for obj_type, getter in [('areas', 'AreaObj'), ('frames', 'FrameObj'), ('points', 'PointObj')]:
+        try:
+            result = getattr(m, getter).GetNameList()
+            if isinstance(result, (list, tuple)):
+                counts[obj_type] = result[0] if isinstance(result[0], int) else 0
+            else:
+                counts[obj_type] = 0
+        except Exception:
+            counts[obj_type] = 0
+    return counts
+
+
+def refresh_view(m):
+    """Forzar refresco de la vista ETABS."""
+    try:
+        m.View.RefreshView(0, False)
+    except Exception:
+        try:
+            m.View.RefreshView()
+        except Exception:
+            pass
+
+
+def get_model(retries=3, wait=5):
+    """Conectar a ETABS EXISTENTE. No crea instancias invisibles.
+
+    Orden de prioridad:
+    1. GetActiveObject — conecta al ETABS en el Running Object Table
+    2. Helper.GetObject(v19) — conecta al ETABS v19 ya corriendo
+    3. Helper.GetObject(v21) — conecta al ETABS v21 ya corriendo
+    4. Helper.CreateObject(v19) — ULTIMO RECURSO, crea instancia VISIBLE
+
+    IMPORTANTE: El metodo 4 solo se usa si nada mas funciona, y FUERZA
+    visibilidad para evitar el bug de instancias fantasma.
+    """
     global _model, _etabs_obj, _helper_ref
 
     if _model is not None:
@@ -85,24 +140,23 @@ def get_model(retries=5, wait=5):
     last_err = None
 
     for attempt in range(1, retries + 1):
-
-        # --- Metodo 1: GetActiveObject (PRIORITARIO) ---
-        # Conecta al ETABS ya corriendo. No spawna procesos extra.
-        # Confirmado que funciona en PC lab con comtypes.gen limpio.
+        # --- Metodo 1: GetActiveObject ---
         try:
             obj = comtypes.client.GetActiveObject('CSI.ETABS.API.ETABSObject')
             m = obj.SapModel
             if _test_model(m):
                 m.SetPresentUnits(TONF_M_C)
-                _etabs_obj = obj  # KEEP ALIVE
+                _etabs_obj = obj
                 _model = m
-                print("[OK] ETABS conectado via GetActiveObject (tonf_m_C)")
+                print("[OK] ETABS conectado via GetActiveObject")
+                diagnose(m)
                 return _model
         except Exception as e:
             last_err = e
+            if attempt == 1:
+                print(f"  GetActiveObject: {e}")
 
-        # --- Metodo 2: Helper.GetObject (ruta especifica) ---
-        # Conecta al ETABS de la ruta indicada (v19 o v21).
+        # --- Metodo 2: Helper.GetObject (conecta a ETABS ya corriendo) ---
         for exe_path in [ETABS19_EXE, ETABS21_EXE]:
             if not os.path.exists(exe_path):
                 continue
@@ -116,66 +170,72 @@ def get_model(retries=5, wait=5):
                 m = obj.SapModel
                 if _test_model(m):
                     m.SetPresentUnits(TONF_M_C)
-                    _helper_ref = helper  # KEEP ALIVE
-                    _etabs_obj = obj      # KEEP ALIVE
-                    _model = m
-                    ver = "19" if "19" in exe_path else "21"
-                    print(f"[OK] ETABS conectado via Helper.GetObject v{ver} (tonf_m_C)")
-                    return _model
-            except Exception as e:
-                last_err = e
-
-        # --- Metodo 3: Helper.CreateObject (lanza nueva instancia v19) ---
-        # Solo si nada mas funciona. Lanza un nuevo ETABS.
-        for exe_path in [ETABS19_EXE, ETABS21_EXE]:
-            if not os.path.exists(exe_path):
-                continue
-            try:
-                helper = comtypes.client.CreateObject('ETABSv1.Helper')
-                import comtypes.gen.ETABSv1 as ETABSv1
-                helper = helper.QueryInterface(ETABSv1.cHelper)
-                obj = helper.CreateObject(exe_path)
-                try:
-                    obj.ApplicationStart()
-                except Exception:
-                    pass
-                time.sleep(5)
-                m = obj.SapModel
-                if _test_model(m):
-                    m.SetPresentUnits(TONF_M_C)
                     _helper_ref = helper
                     _etabs_obj = obj
                     _model = m
                     ver = "19" if "19" in exe_path else "21"
-                    print(f"[OK] ETABS conectado via Helper.CreateObject v{ver} (tonf_m_C)")
+                    print(f"[OK] ETABS conectado via Helper.GetObject v{ver}")
+                    diagnose(m)
                     return _model
             except Exception as e:
                 last_err = e
-
-        # --- Metodo 4: CreateObject (ultimo recurso, spawna v21) ---
-        try:
-            obj = comtypes.client.CreateObject('CSI.ETABS.API.ETABSObject')
-            m = obj.SapModel
-            if _test_model(m):
-                m.SetPresentUnits(TONF_M_C)
-                _etabs_obj = obj
-                _model = m
-                print("[OK] ETABS conectado via CreateObject (tonf_m_C)")
-                return _model
-        except Exception as e:
-            last_err = e
 
         if attempt < retries:
             print(f"  Intento {attempt}/{retries} fallido, reintentando en {wait}s...")
             time.sleep(wait)
 
+    # --- Metodo 3: Helper.CreateObject — ULTIMO RECURSO ---
+    # Crea nueva instancia pero la hace VISIBLE para evitar el bug fantasma
+    print("\n  [WARN] No se pudo conectar a ETABS existente.")
+    print("  Creando nueva instancia VISIBLE de ETABS...")
+
+    for exe_path in [ETABS19_EXE, ETABS21_EXE]:
+        if not os.path.exists(exe_path):
+            continue
+        try:
+            helper = comtypes.client.CreateObject('ETABSv1.Helper')
+            import comtypes.gen.ETABSv1 as ETABSv1
+            helper = helper.QueryInterface(ETABSv1.cHelper)
+            obj = helper.CreateObject(exe_path)
+
+            # *** CRITICO: Forzar visibilidad ***
+            try:
+                obj.ApplicationStart()
+            except Exception:
+                pass
+            try:
+                obj.Visible = True
+            except Exception:
+                pass
+
+            print("  Esperando que ETABS cargue (15s)...")
+            time.sleep(15)
+
+            m = obj.SapModel
+            if _test_model(m):
+                m.SetPresentUnits(TONF_M_C)
+                _helper_ref = helper
+                _etabs_obj = obj
+                _model = m
+                ver = "19" if "19" in exe_path else "21"
+                print(f"[OK] ETABS conectado via Helper.CreateObject v{ver} (instancia nueva)")
+                print("  >>> Verifica que la ventana de ETABS sea visible <<<")
+                diagnose(m)
+                return _model
+        except Exception as e:
+            last_err = e
+            ver = "19" if "19" in exe_path else "21"
+            print(f"  Helper.CreateObject v{ver}: {e}")
+
+    # --- Nada funciono ---
     print(f"\n[ERROR] No se pudo conectar a ETABS: {last_err}")
-    print("\nSoluciones:")
-    print("  1. Cerrar TODO ETABS (taskkill /F /IM ETABS.exe)")
-    print("  2. Abrir ETABS (v19 o v21), esperar a que cargue completamente")
+    print("\nSOLUCIONES:")
+    print("  1. Cerrar TODO ETABS:")
+    print("     taskkill /F /IM ETABS.exe")
+    print("  2. Abrir ETABS 19, esperar a que cargue completamente (20s+)")
     print("  3. python run_all.py")
     print("")
-    print("  Si sigue fallando, probar registrar ETABS 19 como admin:")
+    print("  Si sigue fallando, registrar ETABS 19 como admin:")
     print(f'  "{ETABS19_EXE}" /regserver')
     sys.exit(1)
 

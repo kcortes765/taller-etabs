@@ -1,12 +1,19 @@
 """
 04_beams.py — Dibujar vigas VI20/60G30 en todos los pisos.
+
+FIX v3: Verificacion post-creacion + RefreshView.
 """
-from config_helper import get_model, set_units_tonf_m
+from config_helper import get_model, set_units_tonf_m, verify_elements, refresh_view
 from config import VIGAS, VIGA_NAME, STORY_NAMES, STORY_ELEVATIONS
 
 
 def draw_beams(m):
     set_units_tonf_m(m)
+
+    # Conteo ANTES
+    pre = verify_elements(m)
+    pre_frames = pre.get('frames', 0)
+
     count = 0
     errors = 0
 
@@ -30,9 +37,22 @@ def draw_beams(m):
                 if errors <= 3:
                     print(f"  [ERR] Viga {story}: {e}")
 
-    print(f"[OK] {count} vigas ({len(VIGAS)}/piso x {len(STORY_NAMES)} pisos)")
+    print(f"  API reporta: {count} vigas creadas ({len(VIGAS)}/piso x {len(STORY_NAMES)} pisos)")
     if errors:
         print(f"  [WARN] {errors} errores")
+
+    # *** VERIFICACION ***
+    post = verify_elements(m)
+    post_frames = post.get('frames', 0)
+    vigas_reales = post_frames - pre_frames
+    print(f"  Verificacion: {vigas_reales} frames nuevos (antes={pre_frames}, ahora={post_frames})")
+
+    if vigas_reales == 0 and count > 0:
+        print("  [ERROR CRITICO] API reporto exito pero NO se crearon vigas!")
+        print("  >>> Probable: instancia ETABS incorrecta")
+
+    refresh_view(m)
+    print(f"[OK] {vigas_reales} vigas verificadas en modelo")
 
 
 def main():

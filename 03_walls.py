@@ -1,7 +1,9 @@
 """
 03_walls.py — Dibujar todos los muros del Edificio 1 en todos los pisos.
+
+FIX v3: Verificacion post-creacion con GetNameList + RefreshView.
 """
-from config_helper import get_model, set_units_tonf_m
+from config_helper import get_model, set_units_tonf_m, verify_elements, refresh_view
 from config import (
     MUROS_DIR_Y, MUROS_DIR_X,
     MURO_30_NAME, MURO_30_ESP, MURO_20_NAME,
@@ -17,6 +19,11 @@ def get_section(esp):
 
 def draw_walls(m):
     set_units_tonf_m(m)
+
+    # Conteo ANTES de crear
+    pre = verify_elements(m)
+    pre_areas = pre.get('areas', 0)
+
     count = 0
     errors = 0
 
@@ -35,7 +42,6 @@ def draw_walls(m):
                     [z_bot, z_bot, z_top, z_top],
                     '', sec, '', 'Global'
                 )
-                # comtypes retorna [name_asignado, ret_code]
                 ret = result[-1] if isinstance(result, (list, tuple)) else result
                 if ret == 0:
                     count += 1
@@ -68,9 +74,23 @@ def draw_walls(m):
                     print(f"  [ERR] Muro X eje {eje} {story}: {e}")
 
     n_por_piso = len(MUROS_DIR_Y) + len(MUROS_DIR_X)
-    print(f"[OK] {count} muros dibujados ({n_por_piso}/piso x {len(STORY_NAMES)} pisos)")
+    print(f"  API reporta: {count} muros creados ({n_por_piso}/piso x {len(STORY_NAMES)} pisos)")
     if errors:
         print(f"  [WARN] {errors} errores")
+
+    # *** VERIFICACION: confirmar que los elementos existen realmente ***
+    post = verify_elements(m)
+    post_areas = post.get('areas', 0)
+    muros_reales = post_areas - pre_areas
+    print(f"  Verificacion: {muros_reales} areas nuevas en modelo (antes={pre_areas}, ahora={post_areas})")
+
+    if muros_reales == 0 and count > 0:
+        print("  [ERROR CRITICO] La API reporto exito pero NO se crearon muros!")
+        print("  >>> Probable: conectado a instancia ETABS incorrecta")
+        print("  >>> Solucion: cerrar TODO ETABS, abrir solo v19, reintentar")
+
+    refresh_view(m)
+    print(f"[OK] {muros_reales} muros verificados en modelo")
 
 
 def main():

@@ -1,7 +1,9 @@
 """
 05_slabs.py — Dibujar losas Losa15G30 en todos los panos.
+
+FIX v3: Verificacion post-creacion + RefreshView.
 """
-from config_helper import get_model, set_units_tonf_m
+from config_helper import get_model, set_units_tonf_m, verify_elements, refresh_view
 from config import GRID_X, GRID_Y, LOSA_NAME, STORY_NAMES, STORY_ELEVATIONS
 
 # Panos de losa: (x1, y1, x2, y2) rectangulos en planta
@@ -55,6 +57,11 @@ SLAB_PANELS = [
 
 def draw_slabs(m):
     set_units_tonf_m(m)
+
+    # Conteo ANTES
+    pre = verify_elements(m)
+    pre_areas = pre.get('areas', 0)
+
     count = 0
     errors = 0
 
@@ -80,9 +87,22 @@ def draw_slabs(m):
                 if errors <= 3:
                     print(f"  [ERR] Losa {story}: {e}")
 
-    print(f"[OK] {count} losas ({len(SLAB_PANELS)}/piso x {len(STORY_NAMES)} pisos)")
+    print(f"  API reporta: {count} losas creadas ({len(SLAB_PANELS)}/piso x {len(STORY_NAMES)} pisos)")
     if errors:
         print(f"  [WARN] {errors} errores")
+
+    # *** VERIFICACION ***
+    post = verify_elements(m)
+    post_areas = post.get('areas', 0)
+    losas_reales = post_areas - pre_areas
+    print(f"  Verificacion: {losas_reales} areas nuevas (antes={pre_areas}, ahora={post_areas})")
+
+    if losas_reales == 0 and count > 0:
+        print("  [ERROR CRITICO] API reporto exito pero NO se crearon losas!")
+        print("  >>> Probable: instancia ETABS incorrecta")
+
+    refresh_view(m)
+    print(f"[OK] {losas_reales} losas verificadas en modelo")
 
 
 def main():
