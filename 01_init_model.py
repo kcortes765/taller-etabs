@@ -12,9 +12,11 @@ from config import N_STORIES, STORY_NAMES, STORY_HEIGHTS, STORY_ELEVATIONS
 def main():
     m = get_model()
 
-    # Inicializar modelo en blanco (9 = tonf_m_C)
-    ret = m.InitializeNewModel(9)
-    print(f"  InitializeNewModel: ret={ret}")
+    # FIX v6: NO llamar InitializeNewModel — destruye el MDI window y la vista.
+    # El usuario ya creo el modelo blank en ETABS UI (File > New Model > Blank).
+    # Solo setear unidades y proceder con stories.
+    m.SetPresentUnits(9)  # 9 = tonf_m_C
+    print("  Unidades: tonf-m-C")
 
     # Definir pisos — probar multiples firmas porque v19 y v21 difieren
     elevations = [0.0] + STORY_ELEVATIONS  # N+1 elementos
