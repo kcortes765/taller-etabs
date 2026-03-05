@@ -124,14 +124,6 @@ def assign_base_supports(m):
 
         return None
 
-    # Probar SetRestraint con el primer punto en z=0 para ver que formato acepta
-    # COM a veces rechaza [True]*6 pero acepta [1,1,1,1,1,1]
-    restraint_formats = [
-        ([True, True, True, True, True, True], "bool list"),
-        ([1, 1, 1, 1, 1, 1], "int list"),
-        ((True, True, True, True, True, True), "bool tuple"),
-    ]
-
     # Primero: encontrar todos los puntos en z=0
     base_points = []
     for pt in point_names:
@@ -146,7 +138,6 @@ def assign_base_supports(m):
     print(f"  Puntos en z=0: {len(base_points)}")
 
     if len(base_points) == 0:
-        # Fallback: buscar elevacion minima
         print("  Buscando elevacion minima...")
         z_vals = []
         for pt in list(point_names)[:100]:
@@ -176,44 +167,29 @@ def assign_base_supports(m):
         print("      Assign > Joint > Restraints > Fixed")
         return
 
-    # Probar cada formato de restraint con el primer punto
-    working_format = None
+    def _ret_ok(ret):
+        """Verificar si ret indica exito. ETABS retorna 0 (int) o [(...), 0]."""
+        if isinstance(ret, int):
+            return ret == 0
+        if isinstance(ret, (list, tuple)) and len(ret) > 0:
+            last = ret[-1]
+            return last == 0
+        return False
+
+    # Aplicar empotramientos: probar con primer punto, luego aplicar a todos
     test_pt = base_points[0]
-    for fmt, desc in restraint_formats:
-        try:
-            ret = m.PointObj.SetRestraint(test_pt, fmt)
-            print(f"  [DEBUG] SetRestraint('{test_pt}', {desc}): ret={ret}")
-            if ret == 0:
-                working_format = fmt
-                break
-            # ret != 0 pero no excepcion: probar siguiente formato
-        except Exception as e:
-            print(f"  [DEBUG] SetRestraint {desc}: {e}")
+    fmt_to_use = [True, True, True, True, True, True]
+    try:
+        ret = m.PointObj.SetRestraint(test_pt, fmt_to_use)
+        print(f"  [DEBUG] SetRestraint test: ret={ret}, ok={_ret_ok(ret)}")
+    except Exception as e:
+        print(f"  [DEBUG] SetRestraint test error: {e}")
 
-    if working_format is None:
-        # Intentar con ItemType parameter
-        for fmt, desc in restraint_formats:
-            try:
-                ret = m.PointObj.SetRestraint(test_pt, fmt, 0)  # 0 = Object
-                print(f"  [DEBUG] SetRestraint(3 args, {desc}): ret={ret}")
-                if ret == 0:
-                    working_format = fmt
-                    restraint_formats = [(fmt, desc)]  # recordar que necesita 3 args
-                    break
-            except Exception as e:
-                print(f"  [DEBUG] SetRestraint 3 args {desc}: {e}")
-
-    if working_format is None:
-        print("[ERROR] SetRestraint no funciona con ningun formato")
-        print("  >>> MANUAL: Select all base points > Assign > Joint > Restraints > Fixed")
-        return
-
-    # Aplicar a todos los puntos base
     count = 0
     for pt in base_points:
         try:
-            ret = m.PointObj.SetRestraint(pt, working_format)
-            if ret == 0:
+            ret = m.PointObj.SetRestraint(pt, fmt_to_use)
+            if _ret_ok(ret):
                 count += 1
         except Exception:
             pass

@@ -330,21 +330,42 @@ def define_combinations(m):
 
 def main():
     m = get_model()
-    print("\n--- Espectro NCh433 ---")
-    spectrum_ok = define_spectrum(m)
-    print("\n--- Fuente de masa ---")
-    define_mass_source(m)
-    print("\n--- Caso modal ---")
-    define_modal_case(m)
+
+    # Cada seccion es independiente — si una falla no pierde las otras
+    spectrum_ok = False
+    sections = [
+        ("Espectro NCh433", lambda: define_spectrum(m)),
+        ("Fuente de masa", lambda: define_mass_source(m)),
+        ("Caso modal", lambda: define_modal_case(m)),
+    ]
+
+    for name, func in sections:
+        print(f"\n--- {name} ---")
+        try:
+            result = func()
+            if name == "Espectro NCh433":
+                spectrum_ok = result
+        except Exception as e:
+            print(f"  [ERROR] {name} fallo: {e}")
+
     print("\n--- Response Spectrum ---")
     if spectrum_ok:
-        define_rs_cases(m)
+        try:
+            define_rs_cases(m)
+        except Exception as e:
+            print(f"  [ERROR] RS cases fallo: {e}")
     else:
         print("  [SKIP] No se crean RS cases porque el espectro no se definio")
-        print("  >>> 1. Definir espectro manualmente (ver arriba)")
+        print("  >>> 1. Definir espectro manualmente en ETABS")
         print("  >>> 2. Re-ejecutar: python 08_spectrum_cases.py")
+
     print("\n--- Combinaciones ---")
-    define_combinations(m)
+    try:
+        define_combinations(m)
+    except Exception as e:
+        print(f"  [ERROR] Combinaciones fallo: {e}")
+        print("  >>> Si ETABS se cerro, abrir Edificio1.edb y definir manualmente")
+
     print("\n=== 08_spectrum_cases COMPLETADO ===")
 
 
