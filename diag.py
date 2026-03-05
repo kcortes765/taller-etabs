@@ -57,10 +57,13 @@ def main():
     try:
         import comtypes
         gen_path = os.path.join(os.path.dirname(comtypes.__file__), 'gen')
-        gen_files = [f for f in os.listdir(gen_path)
-                     if not f.startswith('__') and f != '__pycache__']
-        print(f"  comtypes: instalado")
-        print(f"  comtypes/gen: {len(gen_files)} archivos cached")
+        if os.path.exists(gen_path):
+            gen_files = [f for f in os.listdir(gen_path)
+                         if not f.startswith('__') and f != '__pycache__']
+            print(f"  comtypes: instalado")
+            print(f"  comtypes/gen: {len(gen_files)} archivos cached")
+        else:
+            print(f"  comtypes: instalado (gen/ vacio, se creara al conectar)")
     except ImportError:
         print("  [ERROR] comtypes NO instalado: pip install comtypes")
         return
