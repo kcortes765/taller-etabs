@@ -108,7 +108,8 @@ def _parse_modal_mass_ratios(result):
             try:
                 floats = [float(x) for x in v]
                 if all(x > 0 for x in floats) and periods is None:
-                    if max(floats) > 0.01 and max(floats) < 100:  # periodos razonables
+                    is_consecutive = len(floats) > 2 and all(abs(floats[k] - (k+1)) < 0.1 for k in range(min(3, len(floats))))
+                    if max(floats) > 0.01 and max(floats) < 20 and not is_consecutive:
                         periods = floats
                         # Los siguientes deberian ser Ux, Uy
                         for j in range(i+1, min(i+4, len(vals))):
@@ -297,7 +298,7 @@ def verify_qmin(m, Rx_star, Ry_star):
     sf_x_actual = G_ACCEL / Rx_star
     sf_y_actual = G_ACCEL / Ry_star
 
-    if Qx is not None:
+    if Qx is not None and Qx > 0:
         print(f"  Q_din_X = {Qx:.0f} tonf  (SEx, R*x={Rx_star:.2f})")
         if Qx < Qmin:
             amp_x = Qmin / Qx
@@ -313,7 +314,7 @@ def verify_qmin(m, Rx_star, Ry_star):
         print(f"  Verificar manualmente: Q_SEx >= {Qmin:.0f} tonf")
         print(f"  Si Q_SEx < {Qmin:.0f}: nueva escala = {sf_x_actual:.4f} × ({Qmin:.0f}/Q_SEx)")
 
-    if Qy is not None:
+    if Qy is not None and Qy > 0:
         print(f"  Q_din_Y = {Qy:.0f} tonf  (SEy, R*y={Ry_star:.2f})")
         if Qy < Qmin:
             amp_y = Qmin / Qy
