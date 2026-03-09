@@ -7,7 +7,7 @@ Implementa:
 
 FIX v3: Import N_STORIES corregido, manejo robusto de puntos CM.
 """
-from config_helper import get_model, set_units_tonf_m
+from config_helper import get_model, set_units_tonf_m, unlock_model
 from config import (
     N_STORIES, STORY_NAMES, STORY_ELEVATIONS, STORY_HEIGHTS,
     EA_X, EA_Y, CM_X, CM_Y, G_ACCEL,
@@ -25,12 +25,13 @@ def detect_diaphragm_name(m):
                 return str(names[0])
     except Exception:
         pass
-    return 'DR'
+    return 'D1'  # default en ETABS v19 tras NewBlank (no 'DR')
 
 
 def setup_torsion_case_a(m):
     """Caso a): Eccentricity override 5% en RS cases SEx/SEy."""
     print("\n--- Caso a): Eccentricity Override 5% ---")
+    unlock_model(m)
     set_units_tonf_m(m)
 
     diaph_name = detect_diaphragm_name(m)
@@ -104,6 +105,7 @@ def _find_or_create_point(m, x, y, z):
 def setup_torsion_case_b2(m):
     """Caso b) Forma 2: RS cases adicionales + momentos torsionales."""
     print("\n--- Caso b) Forma 2: RS cases + momentos torsionales ---")
+    unlock_model(m)
     set_units_tonf_m(m)
 
     # 1. Crear RS cases adicionales (sin eccentricity)

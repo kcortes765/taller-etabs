@@ -3,7 +3,7 @@
 
 FIX v3: Verificacion post-creacion + RefreshView.
 """
-from config_helper import get_model, set_units_tonf_m, verify_elements, refresh_view
+from config_helper import get_model, set_units_tonf_m, unlock_model, verify_elements, refresh_view
 from config import VIGAS, VIGA_NAME, STORY_NAMES, STORY_ELEVATIONS
 
 
@@ -60,6 +60,7 @@ def draw_beams(m):
 
 def main():
     m = get_model()
+    unlock_model(m)
     print("\n--- Dibujando vigas ---")
     draw_beams(m)
     print("\n=== 04_beams COMPLETADO ===")

@@ -9,7 +9,7 @@ FIX v3:
 - Caso modal: ETABS crea 'MODAL' por defecto, solo ajustamos n_modos
 """
 import os
-from config_helper import get_model, set_units_tonf_m
+from config_helper import get_model, set_units_tonf_m, unlock_model
 from config import (
     AO_G, I_FACTOR, RO_MUROS, G_ACCEL,
     S_SUELO, TO_SUELO, T_PRIME, N_SUELO, P_SUELO,
@@ -46,13 +46,14 @@ def save_spectrum_file(T_vals, Sa_vals):
     spec_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'espectro_nch433.txt')
     with open(spec_file, 'w') as f:
         for t, sa in zip(T_vals, Sa_vals):
-            f.write(f"{t}\t{sa}\n")
+            f.write(f"{t:.4f} {sa:.6f}\n")
     print(f"  Archivo espectro guardado: espectro_nch433.txt ({len(T_vals)} puntos)")
     return spec_file
 
 
 def define_spectrum(m):
     """Definir funcion de espectro en ETABS."""
+    unlock_model(m)
     set_units_tonf_m(m)
     T_vals, Sa_vals = build_elastic_spectrum()
     n = len(T_vals)
@@ -114,6 +115,7 @@ def define_spectrum(m):
 
 def define_mass_source(m):
     """Fuente de masa: selfweight + 100%TERP + 25%SCP."""
+    unlock_model(m)
     methods = [
         ('PropMass.SetMassSource_1',
          lambda: m.PropMass.SetMassSource_1(
@@ -153,6 +155,7 @@ def define_modal_case(m):
     ETABS crea caso 'MODAL' por defecto con NewBlank.
     Solo necesitamos ajustar el numero de modos.
     """
+    unlock_model(m)
     n_modes = 60
 
     # Intentar con 'Modal' y 'MODAL' (nombre puede variar)
@@ -193,8 +196,10 @@ def define_modal_case(m):
 
 def define_rs_cases(m):
     """Casos Response Spectrum (SEx, SEy)."""
+    unlock_model(m)
     set_units_tonf_m(m)
     sf = G_ACCEL  # 9.81 m/s2 (se ajusta con R* despues)
+    ok_cases = 0
 
     for case_name, direction in [('SEx', 'U1'), ('SEy', 'U2')]:
         # Crear caso RS
@@ -206,15 +211,18 @@ def define_rs_cases(m):
             continue
 
         # Vincular al caso modal
+        modal_ok = False
         for modal_name in ['Modal', 'MODAL']:
             try:
                 ret = m.LoadCases.ResponseSpectrum.SetModalCase(case_name, modal_name)
                 print(f"  SetModalCase '{case_name}' -> '{modal_name}': ret={ret}")
+                modal_ok = True
                 break
             except Exception:
                 pass
 
         # Asignar espectro y direccion
+        loads_ok = False
         for args in [
             (case_name, 1, [direction], ['Espectro_NCh433'], [sf], [''], [0.0]),
             (case_name, 1, [direction], ['Espectro_NCh433'], [sf]),
@@ -222,6 +230,7 @@ def define_rs_cases(m):
             try:
                 ret = m.LoadCases.ResponseSpectrum.SetLoads(*args)
                 print(f"  SetLoads '{case_name}' ({len(args)} args): ret={ret}")
+                loads_ok = True
                 break
             except Exception:
                 pass
@@ -242,7 +251,15 @@ def define_rs_cases(m):
             except Exception:
                 pass
 
+        if modal_ok and loads_ok:
+            ok_cases += 1
+
+    if ok_cases != 2:
+        print(f"[WARN] Solo se configuraron {ok_cases}/2 casos RS")
+        return False
+
     print("[OK] Casos RS definidos (SEx, SEy)")
+    return True
 
 
 def define_combinations(m, spectrum_ok=True):
@@ -252,6 +269,7 @@ def define_combinations(m, spectrum_ok=True):
     porque esos casos RS no existen. Se pueden agregar manualmente
     una vez que el espectro sea importado y los RS cases definidos.
     """
+    unlock_model(m)
     set_units_tonf_m(m)
 
     combos_gravity = {
@@ -286,7 +304,12 @@ def define_combinations(m, spectrum_ok=True):
         except Exception as e:
             print(f"  [WARN] Combo {combo_name}: {e}")
 
+    if ok != len(combos):
+        print(f"[WARN] Solo se definieron {ok}/{len(combos)} combinaciones")
+        return False
+
     print(f"[OK] {ok}/{len(combos)} combinaciones NCh3171 definidas")
+    return True
 
 
 def main():
@@ -318,9 +341,10 @@ def main():
     print("\n--- Response Spectrum ---")
     if spectrum_ok:
         try:
-            define_rs_cases(m)
+            spectrum_ok = define_rs_cases(m)
         except Exception as e:
             print(f"  [ERROR] RS cases fallo: {e}")
+            spectrum_ok = False
             print("  >>> Si ETABS se cerro, abrir Edificio1.edb y ejecutar paso 8 manualmente")
     else:
         print("  [SKIP] No se crean RS cases porque el espectro no se definio")

@@ -4,22 +4,21 @@ INSTRUCCIONES — Taller ETABS Edificio 1
 REQUISITOS:
 - Python 3.12 instalado (ya lo tienes)
 - pip install comtypes (ya lo instalaste)
-- ETABS abierto
+- ETABS 19 instalado
 
 PASOS:
 1. Copiar toda esta carpeta a: C:\Users\Civil\Desktop\ta
-2. Abrir ETABS → File → New Model → en blanco (no seleccionar template)
-3. Abrir PowerShell o CMD
-4. Ejecutar:
+2. Abrir PowerShell o CMD como administrador
+3. Ejecutar:
 
    cd C:\Users\Civil\Desktop\ta
-   python 00_test_api.py
+   python diag.py
 
-5. Si el test pasa, ejecutar:
+4. Si el diagnostico pasa, ejecutar:
 
    python run_all.py
 
-6. O doble-click en EJECUTAR.bat
+5. O doble-click en EJECUTAR.ps1
 
 ALTERNATIVA — Correr paso a paso:
    python 01_init_model.py
@@ -38,10 +37,15 @@ DESPUES DE CORRER:
 - Hacer Run Analysis (Analyze > Run Analysis)
 - Ajustar R* segun T* obtenido del analisis modal
 
+NOTAS:
+- `run_all.py` intenta abrir ETABS 19 automaticamente si no estaba abierto
+- `01_init_model.py` crea el modelo base y los 20 stories programaticamente
+- `07b_save_checkpoint.py` aborta si stories/unidades/geometria no coinciden
+
 ARCHIVOS:
   config.py              Geometria completa del edificio
   config_helper.py       Conexion ETABS
-  00_test_api.py         Test de la API (correr primero!)
+  diag.py                Diagnostico de conexion (correr primero)
   01_init_model.py       Inicializa modelo + 20 pisos
   02_materials_sections.py  G30, A630-420H, secciones
   03_walls.py            Dibuja todos los muros

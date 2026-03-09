@@ -3,7 +3,7 @@
 
 FIX v3: Verificacion post-creacion con GetNameList + RefreshView.
 """
-from config_helper import get_model, set_units_tonf_m, verify_elements, refresh_view
+from config_helper import get_model, set_units_tonf_m, unlock_model, verify_elements, refresh_view
 from config import (
     MUROS_DIR_Y, MUROS_DIR_X,
     MURO_30_NAME, MURO_30_ESP, MURO_20_NAME,
@@ -95,6 +95,7 @@ def draw_walls(m):
 
 def main():
     m = get_model()
+    unlock_model(m)
     print("\n--- Dibujando muros ---")
     draw_walls(m)
     print("\n=== 03_walls COMPLETADO ===")

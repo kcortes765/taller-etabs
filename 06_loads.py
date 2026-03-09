@@ -3,7 +3,7 @@
 
 FIX v3: Mejor manejo de formatos COM, verificacion de cargas asignadas.
 """
-from config_helper import get_model, set_units_tonf_m
+from config_helper import get_model, set_units_tonf_m, unlock_model
 from config import (
     SCP_OFICINA, SCT_TECHO, TERP_PISO, TERT_TECHO,
     STORY_ELEVATIONS, LOSA_NAME,
@@ -20,8 +20,6 @@ def define_load_patterns(m):
         ('SCT',  11, 0.0),   # Roof Live
         ('TERP', 2,  0.0),   # Super Dead
         ('TERT', 2,  0.0),   # Super Dead
-        ('SEx',  5,  0.0),   # Quake
-        ('SEy',  5,  0.0),   # Quake
     ]
 
     for name, ltype, sw in patterns:
@@ -32,7 +30,7 @@ def define_load_patterns(m):
         except Exception as e:
             print(f"  {name}: {e}")
 
-    print("[OK] 7 patrones de carga definidos")
+    print("[OK] 5 patrones de carga definidos")
 
 
 def _extract_z(coord_result):
@@ -137,6 +135,7 @@ def assign_loads(m):
 
 def main():
     m = get_model()
+    unlock_model(m)
     print("\n--- Patrones de carga ---")
     define_load_patterns(m)
     print("\n--- Asignando cargas ---")

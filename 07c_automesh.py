@@ -7,10 +7,13 @@ CRITICO: Sin mallado, los resultados son INVALIDOS para entrega:
 
 Intenta malla de 1.0m via API. Si falla, da instrucciones manuales exactas.
 """
-from config_helper import get_model, set_units_tonf_m, verify_elements
+from config_helper import get_model, set_units_tonf_m, unlock_model, verify_elements
 
 # Tamano maximo de elemento (m)
-MAX_MESH_SIZE = 1.0
+# CRITICO: vano minimo del edificio es 0.425m (ejes 8-9).
+# Con 1.0m → esos paneles quedan 100% reducidos (sin masa ni rigidez).
+# Con 0.4m → 2 elementos de 0.213m entran en el vano minimo. OK.
+MAX_MESH_SIZE = 0.4
 
 
 def apply_automesh_to_areas(m):
@@ -104,6 +107,7 @@ def apply_automesh_to_areas(m):
 
 def main():
     m = get_model()
+    unlock_model(m)
     set_units_tonf_m(m)
 
     print("\n=== 07c_automesh: Auto-Mesh de muros y losas ===")
@@ -149,7 +153,7 @@ def _print_manual_instructions():
     print("     Assign > Shell > Wall Auto Mesh Options")
     print("     ┌─────────────────────────────────────────┐")
     print("     │ ☑ Auto Rectangular Mesh                 │")
-    print("     │   Max Element Size: 1.0  m              │")
+    print("     │   Max Element Size: 0.4  m              │")
     print("     │ ☑ Add Restraint Points from Lines       │")
     print("     │ ☑ Add Restraint Points from Points      │")
     print("     └─────────────────────────────────────────┘")
@@ -159,7 +163,7 @@ def _print_manual_instructions():
     print("     Assign > Shell > Floor Auto Mesh Options")
     print("     ┌─────────────────────────────────────────┐")
     print("     │ ☑ Auto Rectangular Mesh                 │")
-    print("     │   Max Element Size: 1.0  m              │")
+    print("     │   Max Element Size: 0.4  m              │")
     print("     │ ☑ Add Restraint Points from Lines       │")
     print("     └─────────────────────────────────────────┘")
     print("     → OK")

@@ -3,7 +3,7 @@
 
 FIX v3: Verificacion post-creacion + RefreshView.
 """
-from config_helper import get_model, set_units_tonf_m, verify_elements, refresh_view
+from config_helper import get_model, set_units_tonf_m, unlock_model, verify_elements, refresh_view
 from config import GRID_X, GRID_Y, LOSA_NAME, STORY_NAMES, STORY_ELEVATIONS
 
 # Panos de losa: (x1, y1, x2, y2) rectangulos en planta
@@ -107,6 +107,7 @@ def draw_slabs(m):
 
 def main():
     m = get_model()
+    unlock_model(m)
     print("\n--- Dibujando losas ---")
     draw_slabs(m)
     print("\n=== 05_slabs COMPLETADO ===")

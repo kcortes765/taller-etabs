@@ -4,7 +4,7 @@
 FIX: empotramientos ahora usa GetCoordCartesian con manejo robusto del formato
 COM (puede retornar tuple de floats o tuple con ret code al final).
 """
-from config_helper import get_model, set_units_tonf_m
+from config_helper import get_model, set_units_tonf_m, unlock_model
 from config import LOSA_NAME
 
 
@@ -236,6 +236,7 @@ def remove_all_diaphragms(m):
 
 def main():
     m = get_model()
+    unlock_model(m)
     print("\n--- Diafragma rigido ---")
     define_diaphragm(m)
     print("\n--- Empotramientos base ---")

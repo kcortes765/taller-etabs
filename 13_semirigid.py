@@ -9,7 +9,7 @@ FIX v3: Import correcto de 12_results (no 'import_helper').
 import os
 import importlib
 import time
-from config_helper import get_model, set_units_tonf_m
+from config_helper import get_model, set_units_tonf_m, unlock_model
 from config import LOSA_NAME
 
 
@@ -50,6 +50,7 @@ def remove_diaphragm(m):
 
 def main():
     m = get_model()
+    unlock_model(m)
     set_units_tonf_m(m)
 
     print("\n--- Generar variante semi-rigida ---")

@@ -1,7 +1,7 @@
 """
 02_materials_sections.py — Definir materiales (G30, A630-420H) y secciones.
 """
-from config_helper import get_model, set_units_kgf_cm, set_units_tonf_m
+from config_helper import get_model, set_units_kgf_cm, set_units_tonf_m, unlock_model
 from config import (
     FC_KGF_CM2, EC_KGF_CM2, GAMMA_HA, POISSON_CONC,
     FY_KGF_CM2, ES_KGF_CM2, GAMMA_ACERO, POISSON_STEEL,
@@ -98,6 +98,7 @@ def define_sections(m):
 
 def main():
     m = get_model()
+    unlock_model(m)
     print("\n--- Materiales ---")
     define_materials(m)
     print("\n--- Secciones ---")

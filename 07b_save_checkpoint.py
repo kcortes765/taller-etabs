@@ -6,7 +6,16 @@ ABORTA el pipeline (no tiene sentido seguir con modelo vacio).
 """
 import os
 import sys
-from config_helper import get_model, set_units_tonf_m, verify_elements, diagnose
+from config_helper import (
+    TONF_M_C,
+    format_story_table,
+    get_model,
+    get_story_data,
+    set_units_tonf_m,
+    stories_match_expected,
+    verify_elements,
+)
+from config import STORY_ELEVATIONS, STORY_HEIGHTS, STORY_NAMES
 
 
 def main():
@@ -30,6 +39,30 @@ def main():
         print(f"  Archivo modelo:      {fname or '(sin guardar)'}")
     except Exception:
         pass
+
+    try:
+        units = m.GetPresentUnits()
+        print(f"  PresentUnits:        {units}")
+        if units != TONF_M_C:
+            print(f"  [ERROR CRITICO] Unidades invalidas: se esperaba Ton_m_C ({TONF_M_C})")
+            sys.exit(1)
+    except Exception:
+        pass
+
+    story_data = get_story_data(m)
+    print(format_story_table(story_data))
+    stories_ok, names_ok = stories_match_expected(
+        story_data,
+        STORY_NAMES,
+        STORY_HEIGHTS,
+        STORY_ELEVATIONS,
+    )
+    if not stories_ok:
+        print("\n  [ERROR CRITICO] Los stories del modelo NO coinciden con el edificio de 20 pisos.")
+        print("  Esto invalida diafragmas, masas, T* y drifts.")
+        sys.exit(1)
+    if not names_ok:
+        print("  [WARN] Nombres de stories distintos, pero alturas/elevaciones correctas")
 
     if areas == 0 and frames == 0:
         print("\n  [ERROR CRITICO] EL MODELO ESTA VACIO!")

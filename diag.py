@@ -12,6 +12,11 @@ import os
 import shutil
 
 ETABS19_EXE = r"C:\Program Files\Computers and Structures\ETABS 19\ETABS.exe"
+UNIT_NAMES = {
+    8: 'kgf_m_C',
+    12: 'Ton_m_C',
+    14: 'kgf_cm_C',
+}
 
 
 def section(title):
@@ -142,7 +147,7 @@ def main():
                 pass
 
             print(f"  [{label}] OK")
-            print(f"    Units={u}, File={fname or '(vacio)'}, Visible={visible}")
+            print(f"    Units={u} ({UNIT_NAMES.get(u, 'desconocida')}), File={fname or '(vacio)'}, Visible={visible}")
 
             results.append((label, True, refs))
             return True

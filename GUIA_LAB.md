@@ -48,7 +48,7 @@ python diag.py
 ### Lo que debes ver (BUENO):
 ```
 [A-GetActiveObject] OK
-  Units=9, File=(vacio), Visible=True
+  Units=12 (Ton_m_C) o similar, File=(vacio), Visible=True
 
 RESUMEN:
   FUNCIONAN: A-GetActiveObject
@@ -87,7 +87,7 @@ FASE 1: GEOMETRIA
   Paso 5:  Dibujar losas                 ... OK
   Paso 6:  Patrones y cargas             ... [OK]
   Paso 7:  Diafragma + empotramientos    ... [OK]
-  Paso 7b: VERIFICACION + Checkpoint     ... Areas: 1660, Frames: 400
+  Paso 7b: VERIFICACION + Checkpoint     ... stories OK, Areas: 1660, Frames: 400
   Paso 7c: Auto-Mesh muros y losas       ... [OK] 1660/1660 areas
 ```
 

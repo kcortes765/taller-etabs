@@ -8,13 +8,22 @@ Requiere que el analisis haya corrido al menos una vez (paso 10).
 """
 import os
 import time
-from config_helper import get_model, set_units_tonf_m
+from config_helper import get_model, set_units_tonf_m, unlock_model
 from config import RO_MUROS, G_ACCEL, I_FACTOR, AREA_PLANTA, N_STORIES, calc_R_star
 
 # Qmin coefficient NCh433 art.6.3.3
 CMIN = 0.07
 # Peso sismico estimado (tonf) — se actualiza si se puede leer de ETABS
 W_ESTIMADO = AREA_PLANTA * N_STORIES * 1.0  # ~532 * 20 * 1.0 = 10640 tonf
+
+
+def _looks_like_mode_sequence(values):
+    if len(values) < 2:
+        return False
+    try:
+        return all(abs(float(values[i]) - (i + 1)) < 0.1 for i in range(min(5, len(values))))
+    except (TypeError, ValueError):
+        return False
 
 
 def get_modal_results(m):
@@ -145,7 +154,7 @@ def _parse_modal_periods(result):
         if isinstance(v, (list, tuple)) and len(v) > 0:
             try:
                 floats = [float(x) for x in v]
-                if all(x > 0 for x in floats) and max(floats) < 100:
+                if all(x > 0 for x in floats) and max(floats) < 100 and not _looks_like_mode_sequence(floats):
                     return {
                         'periods': floats,
                         'ux': None,
@@ -335,6 +344,7 @@ def verify_qmin(m, Rx_star, Ry_star):
 
 def main():
     m = get_model()
+    unlock_model(m)
 
     print("\n--- Leer periodos modales ---")
     modal_data = get_modal_results(m)

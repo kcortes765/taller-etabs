@@ -15,40 +15,34 @@ cd ta
 ## Requisitos
 - Python 3.12 (ya instalado en lab)
 - `pip install comtypes`
-- ETABS 19 o 21
+- ETABS 19
 
 ## Ejecutar
 
 ```powershell
-# 1. MATAR TODO ETABS
-Get-Process ETABS -EA SilentlyContinue | Stop-Process -Force
-Start-Sleep 3
-
-# 2. ABRIR ETABS 19
-Start-Process "C:\Program Files\Computers and Structures\ETABS 19\ETABS.exe"
-Start-Sleep 20
-
-# 3. DIAGNOSTICO (primera vez en PC nuevo):
+# 1. DIAGNOSTICO (primera vez en PC nuevo):
 cd C:\Users\Civil\Desktop\ta
 python diag.py
 
-# 4. EJECUTAR TODO:
+# 2. EJECUTAR TODO:
 python run_all.py
 ```
+
+`run_all.py` intenta adjuntarse a ETABS 19 si ya esta abierto y, si no existe una instancia visible, lanza ETABS 19 automaticamente.
 
 ## Pipeline (13 pasos en 4 fases)
 
 ### Fase 1: Geometria (critica)
 | Paso | Script | Que hace |
 |------|--------|----------|
-| 1 | 01_init_model.py | 20 pisos + guarda .edb inmediatamente |
+| 1 | 01_init_model.py | reinicializa el modelo, crea 20 stories correctos y guarda .edb |
 | 2 | 02_materials_sections.py | G30, A630-420H, secciones |
 | 3 | 03_walls.py | ~960 muros (con verificacion post-creacion) |
 | 4 | 04_beams.py | ~400 vigas (con verificacion) |
 | 5 | 05_slabs.py | ~700 losas (con verificacion) |
-| 6 | 06_loads.py | PP, SCP, SCT, TERP, TERT, SEx, SEy |
+| 6 | 06_loads.py | PP, SCP, SCT, TERP, TERT |
 | 7 | 07_diaphragm_supports.py | Diafragma rigido + empotramientos base |
-| 7b | 07b_save_checkpoint.py | **VERIFICACION COMPLETA** + checkpoint |
+| 7b | 07b_save_checkpoint.py | **VERIFICACION COMPLETA** (stories + unidades + geometria) + checkpoint |
 
 ### Fase 2: Analisis
 | Paso | Script | Que hace |
@@ -68,18 +62,15 @@ python run_all.py
 |------|--------|----------|
 | 13 | 13_semirigid.py | Edificio1_SemiRigido.edb (sin diafragma) |
 
-## Bug principal corregido (v3)
+## Fixes estructurales
 
-**Problema**: La API reportaba ~2060 elementos creados, pero ETABS los mostraba vacios.
-
-**Causa**: `Helper.CreateObject()` lanzaba una instancia INVISIBLE de ETABS.
-Los elementos se creaban en la instancia fantasma, no en la ventana que el usuario veia.
-
-**Fix**:
-1. Priorizar `GetActiveObject` (conecta al ETABS visible)
-2. Si necesita crear instancia nueva, FORZAR `obj.Visible = True`
-3. Verificacion post-creacion en cada paso de geometria
-4. Paso 7b aborta si no se verifican elementos
+1. Unidades ETABS corregidas segun API oficial:
+   - `Ton_m_C = 12`
+   - `kgf_m_C = 8`
+   - `kgf_cm_C = 14`
+2. `01_init_model.py` ya no depende de crear stories manualmente en ETABS
+3. `07b_save_checkpoint.py` aborta si el modelo tiene stories/unidades invalidos
+4. `run_all.py` es no interactivo por defecto
 
 ## Los 6 casos de analisis del enunciado
 

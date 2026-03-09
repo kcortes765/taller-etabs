@@ -121,8 +121,8 @@ Write-Host ""
 Write-Host "  SIGUIENTE PASO — Abrir otra terminal y ejecutar:" -ForegroundColor White
 Write-Host ""
 Write-Host "  cd $destDir" -ForegroundColor Yellow
-Write-Host "  python diag.py       <- verificar conexion primero" -ForegroundColor Yellow
-Write-Host "  python run_all.py    <- si diag muestra OK" -ForegroundColor Yellow
+Write-Host "  .\EJECUTAR.ps1       <- wrapper completo" -ForegroundColor Yellow
+Write-Host "  # o manualmente: python diag.py ; python run_all.py" -ForegroundColor Yellow
 Write-Host ""
 Write-Host "  IMPORTANTE mientras corre run_all.py:" -ForegroundColor Red
 Write-Host "  - NO HACER CLIC en la ventana de ETABS" -ForegroundColor Red
@@ -132,4 +132,4 @@ Write-Host "  Presionar ENTER para abrir la terminal en $destDir" -ForegroundCol
 Read-Host
 
 # Abrir nueva terminal en el directorio de trabajo
-Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd '$destDir'; Write-Host 'Listo. Ejecutar: python diag.py' -ForegroundColor Green"
+Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd '$destDir'; Write-Host 'Listo. Ejecutar: .\EJECUTAR.ps1' -ForegroundColor Green"

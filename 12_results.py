@@ -13,6 +13,15 @@ from config import (
 CMIN = 0.07  # NCh433 art.6.3.3
 
 
+def _looks_like_mode_sequence(values):
+    if len(values) < 2:
+        return False
+    try:
+        return all(abs(float(values[i]) - (i + 1)) < 0.1 for i in range(min(5, len(values))))
+    except (TypeError, ValueError):
+        return False
+
+
 def show_modal_results(m):
     """Mostrar periodos y masa participativa."""
     print("\n" + "=" * 60)
@@ -79,7 +88,12 @@ def _print_modal_table(result):
     for idx, (i, v) in enumerate(lists):
         try:
             floats = [float(x) for x in v]
-            if all(x > 0 for x in floats) and max(floats) < 100 and periods is None:
+            if (
+                all(x > 0 for x in floats)
+                and max(floats) < 100
+                and not _looks_like_mode_sequence(floats)
+                and periods is None
+            ):
                 periods = floats
                 data_start = idx
                 break
@@ -138,7 +152,7 @@ def _print_periods_only(result):
         if isinstance(v, (list, tuple)) and len(v) > 0:
             try:
                 periods = [float(x) for x in v]
-                if all(x > 0 for x in periods) and max(periods) < 100:
+                if all(x > 0 for x in periods) and max(periods) < 100 and not _looks_like_mode_sequence(periods):
                     print(f"\n  {'Modo':>4} {'T (s)':>8}")
                     print(f"  {'-'*4} {'-'*8}")
                     for i, p in enumerate(periods[:15]):

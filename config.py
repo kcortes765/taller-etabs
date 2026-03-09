@@ -325,8 +325,6 @@ LOAD_PATTERNS = {
     'SCT':  'Roof Live',  # Sobrecarga techo
     'TERP': 'Super Dead', # Terminaciones piso
     'TERT': 'Super Dead', # Terminaciones techo
-    'SEx':  'Quake',      # Sismo X
-    'SEy':  'Quake',      # Sismo Y
 }
 
 
