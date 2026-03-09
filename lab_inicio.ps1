@@ -1,28 +1,19 @@
-# ============================================================
-# lab_inicio.ps1 — Setup automatico en PC laboratorio UCN
-# ADSE 2026 — Edificio 1 (20 pisos, muros HA)
-#
-# USO: Ejecutar con PowerShell como Administrador
-#   1. Click derecho en PowerShell → "Run as administrator"
-#   2. cd C:\Users\Civil\Desktop
-#   3. .\lab_inicio.ps1
-# ============================================================
+# lab_inicio.ps1 - Setup PC laboratorio UCN ADSE 2026
+# USO: powershell -ExecutionPolicy Bypass -File lab_inicio.ps1
 
-Write-Host ""
-Write-Host "======================================================" -ForegroundColor Cyan
-Write-Host "  TALLER ADSE 2026 — Setup PC Laboratorio" -ForegroundColor Cyan
-Write-Host "======================================================" -ForegroundColor Cyan
-Write-Host ""
+Write-Host "======================================================"
+Write-Host "  TALLER ADSE 2026 - Setup PC Laboratorio"
+Write-Host "======================================================"
 
-# --- PASO 1: Matar TODOS los ETABS ---
-Write-Host "[1/5] Cerrando ETABS..." -ForegroundColor Yellow
+# 1. Matar ETABS
+Write-Host "[1/5] Cerrando ETABS..."
 Get-Process ETABS -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
 Get-Process ETABS_ni -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
 Start-Sleep -Seconds 2
-Write-Host "      OK - procesos terminados" -ForegroundColor Green
+Write-Host "      OK"
 
-# --- PASO 2: Limpiar cache comtypes (evita vtable mismatch v19/v21) ---
-Write-Host "[2/5] Limpiando cache comtypes..." -ForegroundColor Yellow
+# 2. Limpiar cache comtypes
+Write-Host "[2/5] Limpiando cache comtypes..."
 $pythonPath = (Get-Command python -ErrorAction SilentlyContinue).Path
 if ($pythonPath) {
     $sitePackages = & python -c 'import site; print(site.getsitepackages()[0])' 2>$null
@@ -30,41 +21,38 @@ if ($pythonPath) {
         $genPath = Join-Path $sitePackages "comtypes\gen"
         if (Test-Path $genPath) {
             Get-ChildItem $genPath -Exclude "__init__.py","__pycache__" | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
-            Write-Host "      OK - $genPath limpiado" -ForegroundColor Green
+            Write-Host "      OK - cache limpiado"
         } else {
-            Write-Host "      OK - no habia cache" -ForegroundColor Green
+            Write-Host "      OK - no habia cache"
         }
     }
 } else {
-    Write-Host "      [WARN] Python no encontrado en PATH" -ForegroundColor Red
+    Write-Host "      WARN: Python no encontrado"
 }
 
-# --- PASO 3: Abrir ETABS 19 ---
-Write-Host "[3/5] Abriendo ETABS 19..." -ForegroundColor Yellow
+# 3. Abrir ETABS 19
+Write-Host "[3/5] Abriendo ETABS 19..."
 $etabs19 = "C:\Program Files\Computers and Structures\ETABS 19\ETABS.exe"
-$etabs21 = "C:\Program Files\Computers and Structures\ETABS 21\ETABS.exe"
-
 if (Test-Path $etabs19) {
     Start-Process $etabs19
-    Write-Host "      OK - ETABS 19 iniciado" -ForegroundColor Green
-    Write-Host "      Esperando 25 segundos a que cargue..." -ForegroundColor Yellow
+    Write-Host "      Esperando 25 segundos..."
     for ($i = 25; $i -gt 0; $i--) {
         Write-Host "      $i..." -NoNewline
         Start-Sleep -Seconds 1
     }
     Write-Host ""
+    Write-Host "      OK - ETABS 19 iniciado"
 } else {
-    Write-Host "      [WARN] ETABS 19 no encontrado en ruta estandar" -ForegroundColor Red
-    Write-Host "      Abrir ETABS 19 manualmente y presionar ENTER cuando cargue"
+    Write-Host "      WARN: ETABS 19 no encontrado"
+    Write-Host "      Abrir ETABS 19 manualmente y presionar ENTER"
     Read-Host
 }
 
-# --- PASO 4: Descargar scripts del repo ---
-Write-Host "[4/5] Descargando scripts de GitHub..." -ForegroundColor Yellow
+# 4. Descargar scripts
+Write-Host "[4/5] Descargando scripts de GitHub..."
 $desktop = [Environment]::GetFolderPath("Desktop")
 $destDir = Join-Path $desktop "ta"
 
-# Limpiar directorio anterior si existe
 if (Test-Path $destDir) {
     Remove-Item $destDir -Recurse -Force -ErrorAction SilentlyContinue
 }
@@ -74,59 +62,43 @@ $zipUrl = "https://github.com/kcortes765/taller-etabs/archive/refs/heads/master.
 $zipPath = Join-Path $desktop "ta.zip"
 
 try {
-    Write-Host "      Descargando ZIP..." -ForegroundColor Yellow
     [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
     Invoke-WebRequest -Uri $zipUrl -OutFile $zipPath -UseBasicParsing
-
-    Write-Host "      Extrayendo..." -ForegroundColor Yellow
     Expand-Archive -Path $zipPath -DestinationPath $destDir -Force
-
-    # Mover archivos de la subcarpeta al destino
     $subDir = Join-Path $destDir "taller-etabs-master"
     if (Test-Path $subDir) {
         Get-ChildItem $subDir | Copy-Item -Destination $destDir -Recurse -Force
         Remove-Item $subDir -Recurse -Force
     }
     Remove-Item $zipPath -Force -ErrorAction SilentlyContinue
-
-    Write-Host "      OK - Scripts en: $destDir" -ForegroundColor Green
+    Write-Host "      OK - Scripts en: $destDir"
 } catch {
-    Write-Host "      [ERROR] Descarga fallida: $_" -ForegroundColor Red
-    Write-Host "      Alternativa: Copiar los scripts desde USB a $destDir"
-    Write-Host "      Presionar ENTER cuando los scripts esten en $destDir"
-    Read-Host
+    Write-Host "      ERROR: $_"
+    Write-Host "      Copiar scripts desde USB a $destDir"
+    Read-Host "Presionar ENTER cuando esten listos"
 }
 
-# --- PASO 5: Verificar Python y dependencias ---
-Write-Host "[5/5] Verificando Python y comtypes..." -ForegroundColor Yellow
+# 5. Verificar Python
+Write-Host "[5/5] Verificando Python y comtypes..."
 Set-Location $destDir
-
-$pyCheck = & python -c "import comtypes; print('comtypes OK')" 2>&1
+$pyCheck = & python -c 'import comtypes; print("OK")' 2>&1
 if ($pyCheck -match "OK") {
-    Write-Host "      OK - Python y comtypes disponibles" -ForegroundColor Green
+    Write-Host "      OK - comtypes disponible"
 } else {
-    Write-Host "      [WARN] comtypes no disponible: $pyCheck" -ForegroundColor Red
+    Write-Host "      WARN: $pyCheck"
     Write-Host "      Instalar: pip install comtypes"
     Read-Host "Presionar ENTER cuando este instalado"
 }
 
-# --- LISTO ---
 Write-Host ""
-Write-Host "======================================================" -ForegroundColor Green
-Write-Host "  SETUP COMPLETADO" -ForegroundColor Green
-Write-Host "======================================================" -ForegroundColor Green
+Write-Host "======================================================"
+Write-Host "  SETUP COMPLETADO"
+Write-Host "======================================================"
 Write-Host ""
-Write-Host "  Directorio: $destDir" -ForegroundColor Cyan
+Write-Host "  Carpeta: $destDir"
 Write-Host ""
-Write-Host "  SIGUIENTE PASO — Abrir otra terminal y ejecutar:" -ForegroundColor White
+Write-Host "  SIGUIENTE:"
+Write-Host "    cd $destDir"
+Write-Host "    python diag.py"
+Write-Host "    python run_all.py"
 Write-Host ""
-Write-Host "  cd $destDir" -ForegroundColor Yellow
-Write-Host "  .\EJECUTAR.ps1       <- wrapper completo" -ForegroundColor Yellow
-Write-Host "  # o manualmente: python diag.py ; python run_all.py" -ForegroundColor Yellow
-Write-Host ""
-Write-Host "  IMPORTANTE mientras corre run_all.py:" -ForegroundColor Red
-Write-Host "  - NO HACER CLIC en la ventana de ETABS" -ForegroundColor Red
-Write-Host "  - Si ETABS dice 'No responde', NO cerrar — esperar" -ForegroundColor Red
-Write-Host ""
-Write-Host "  SIGUIENTE: cd $destDir" -ForegroundColor White
-Write-Host "            python run_all.py" -ForegroundColor White
