@@ -128,8 +128,5 @@ Write-Host "  IMPORTANTE mientras corre run_all.py:" -ForegroundColor Red
 Write-Host "  - NO HACER CLIC en la ventana de ETABS" -ForegroundColor Red
 Write-Host "  - Si ETABS dice 'No responde', NO cerrar — esperar" -ForegroundColor Red
 Write-Host ""
-Write-Host "  Presionar ENTER para abrir la terminal en $destDir" -ForegroundColor White
-Read-Host
-
-# Abrir nueva terminal en el directorio de trabajo
-Start-Process powershell -ArgumentList "-NoExit", "-NoProfile", "-Command", "Set-Location '$destDir'"
+Write-Host "  SIGUIENTE: cd $destDir" -ForegroundColor White
+Write-Host "            python run_all.py" -ForegroundColor White
