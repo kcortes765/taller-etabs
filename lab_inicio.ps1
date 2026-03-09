@@ -25,7 +25,7 @@ Write-Host "      OK - procesos terminados" -ForegroundColor Green
 Write-Host "[2/5] Limpiando cache comtypes..." -ForegroundColor Yellow
 $pythonPath = (Get-Command python -ErrorAction SilentlyContinue).Path
 if ($pythonPath) {
-    $sitePackages = & python -c "import site; print(site.getsitepackages()[0])" 2>$null
+    $sitePackages = & python -c 'import site; print(site.getsitepackages()[0])' 2>$null
     if ($sitePackages) {
         $genPath = Join-Path $sitePackages "comtypes\gen"
         if (Test-Path $genPath) {
@@ -132,4 +132,4 @@ Write-Host "  Presionar ENTER para abrir la terminal en $destDir" -ForegroundCol
 Read-Host
 
 # Abrir nueva terminal en el directorio de trabajo
-Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd '$destDir'; Write-Host 'Listo. Ejecutar: .\EJECUTAR.ps1' -ForegroundColor Green"
+Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd `"$destDir`"; Write-Host 'Listo. Ejecutar: python run_all.py' -ForegroundColor Green"
