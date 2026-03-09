@@ -132,4 +132,4 @@ Write-Host "  Presionar ENTER para abrir la terminal en $destDir" -ForegroundCol
 Read-Host
 
 # Abrir nueva terminal en el directorio de trabajo
-Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd `"$destDir`"; Write-Host 'Listo. Ejecutar: python run_all.py' -ForegroundColor Green"
+Start-Process powershell -ArgumentList "-NoExit", "-NoProfile", "-Command", "Set-Location '$destDir'"
