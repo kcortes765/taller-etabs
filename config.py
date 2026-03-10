@@ -227,25 +227,31 @@ MUROS_DIR_X = [
     # (del plano se ve solo vigas azules en B)
 
     # --- Eje C (y=6.446) --- MUROS IMPORTANTES
-    # Entre 3-6: e=30cm
+    # Pag 3 "Longitud de Muros": muro izquierdo mide 3.675m neto
+    # = eje 1 (x=0) a eje 3 (x=3.825) menos media pared 30cm → UN muro continuo 1→3
+    # Faja 3-6: e=30cm
+    ('C', GRID_Y['C'], GRID_X['1'],  GRID_X['3'],  MURO_20_ESP),  # FIX: era 1→2
     ('C', GRID_Y['C'], GRID_X['3'],  GRID_X['4'],  MURO_30_ESP),
     ('C', GRID_Y['C'], GRID_X['5'],  GRID_X['6'],  MURO_30_ESP),
-    # Entre 10-14: e=30cm  (con abertura ascensor en 8-10 aprox)
+    # Zona ascensor (eje 10 al centro, shaft ≈ 7.7m): muros a ambos lados
+    # 10→11 = borde izquierdo del shaft; 11→12 = borde derecho inmediato
+    # TODO: verificar límites exactos del shaft con dimensiones del plano
     ('C', GRID_Y['C'], GRID_X['10'], GRID_X['11'], MURO_30_ESP),
     ('C', GRID_Y['C'], GRID_X['11'], GRID_X['12'], MURO_30_ESP),
     ('C', GRID_Y['C'], GRID_X['13'], GRID_X['14'], MURO_30_ESP),
     # Resto en eje C: e=20cm
-    ('C', GRID_Y['C'], GRID_X['1'],  GRID_X['2'],  MURO_20_ESP),
     ('C', GRID_Y['C'], GRID_X['7'],  GRID_X['8'],  MURO_20_ESP),
     ('C', GRID_Y['C'], GRID_X['14'], GRID_X['15'], MURO_20_ESP),
     ('C', GRID_Y['C'], GRID_X['15'], GRID_X['16'], MURO_20_ESP),
     ('C', GRID_Y['C'], GRID_X['16'], GRID_X['17'], MURO_20_ESP),
 
     # --- Eje D (y=7.996, e=20cm) ---
-    # Del plano: muros cortos en D
+    # Muros cortos en D (stubs de acoplamiento)
+    # Pag 2 plan: stubs visibles en 2-3, 4-5, 12-13 (izquierdo) y 14-15 (derecho)
     ('D', GRID_Y['D'], GRID_X['2'],  GRID_X['3'],  MURO_20_ESP),
     ('D', GRID_Y['D'], GRID_X['4'],  GRID_X['5'],  MURO_20_ESP),
     ('D', GRID_Y['D'], GRID_X['12'], GRID_X['13'], MURO_20_ESP),
+    ('D', GRID_Y['D'], GRID_X['14'], GRID_X['15'], MURO_20_ESP),  # ADD: visible en plano
 
     # --- Eje E (y=10.716, e=20cm) ---
     ('E', GRID_Y['E'], GRID_X['2'],  GRID_X['3'],  MURO_20_ESP),
@@ -254,12 +260,13 @@ MUROS_DIR_X = [
     ('E', GRID_Y['E'], GRID_X['14'], GRID_X['15'], MURO_20_ESP),
 
     # --- Eje F (y=13.821, e=20cm) ---
-    # Del plano pag 7 (elevacion eje F): muros en ejes 4-5 y 14-15 solamente
-    # Los otros tramos en F tienen vigas, no muros
-    ('F', GRID_Y['F'], GRID_X['2'],  GRID_X['3'],  MURO_20_ESP),
+    # Pag 7 elevacion eje F: muestra 1 panel ancho → probablemente solo 4-5 y 14-15
+    # INCERTIDUMBRE: los muros en 2-3 y 16-17 podrían ser vigas (VI20/60), no muros
+    # TODO: confirmar con plano de detalles o al modelar en ETABS
+    ('F', GRID_Y['F'], GRID_X['2'],  GRID_X['3'],  MURO_20_ESP),  # VERIFICAR
     ('F', GRID_Y['F'], GRID_X['4'],  GRID_X['5'],  MURO_20_ESP),
     ('F', GRID_Y['F'], GRID_X['14'], GRID_X['15'], MURO_20_ESP),
-    ('F', GRID_Y['F'], GRID_X['16'], GRID_X['17'], MURO_20_ESP),
+    ('F', GRID_Y['F'], GRID_X['16'], GRID_X['17'], MURO_20_ESP),  # VERIFICAR
 ]
 
 # ============================================================
@@ -317,6 +324,62 @@ VIGAS = VIGAS_EJE_A + VIGAS_EJE_F + VIGAS_INTERIORES
 
 
 # ============================================================
+# LOSAS - Huella levantada desde Enunciado Taller (paginas 2 y 4)
+# ============================================================
+def _rect_axes(x_ini, x_fin, y_ini, y_fin):
+    return (GRID_X[x_ini], GRID_Y[y_ini], GRID_X[x_fin], GRID_Y[y_fin])
+
+
+SLAB_PANELS_FLOOR = [
+    _rect_axes('3', '6', 'A', 'B'),
+    _rect_axes('7', '8', 'A', 'B'),
+    _rect_axes('9', '16', 'A', 'B'),
+    _rect_axes('3', '17', 'B', 'C'),
+    _rect_axes('3', '9', 'C', 'D'),
+    _rect_axes('11', '17', 'C', 'D'),
+    _rect_axes('3', '17', 'D', 'F'),
+]
+
+
+SLAB_PANELS_ROOF = [
+    _rect_axes('3', '16', 'A', 'B'),
+    _rect_axes('3', '17', 'B', 'C'),
+    _rect_axes('3', '9', 'C', 'D'),
+    _rect_axes('11', '17', 'C', 'D'),
+    _rect_axes('3', '17', 'D', 'F'),
+]
+
+
+def _rect_area(panel):
+    x0, y0, x1, y1 = panel
+    return abs((x1 - x0) * (y1 - y0))
+
+
+def _rect_centroid(panel):
+    x0, y0, x1, y1 = panel
+    return ((x0 + x1) / 2.0, (y0 + y1) / 2.0)
+
+
+def _panels_area(panels):
+    return sum(_rect_area(panel) for panel in panels)
+
+
+def _panels_centroid(panels):
+    total_area = _panels_area(panels)
+    if total_area <= 0:
+        return (0.0, 0.0)
+
+    sum_x = 0.0
+    sum_y = 0.0
+    for panel in panels:
+        area = _rect_area(panel)
+        cx, cy = _rect_centroid(panel)
+        sum_x += area * cx
+        sum_y += area * cy
+    return (sum_x / total_area, sum_y / total_area)
+
+
+# ============================================================
 # NOTACION LOAD PATTERNS
 # ============================================================
 LOAD_PATTERNS = {
@@ -336,12 +399,16 @@ LY_PLANTA = max(GRID_Y.values()) - min(GRID_Y.values())  # 13.821 m
 EA_X = 0.05 * LX_PLANTA  # excentricidad accidental para sismo Y (1.925 m)
 EA_Y = 0.05 * LY_PLANTA  # excentricidad accidental para sismo X (0.691 m)
 
-# Centro geometrico aproximado de la planta
-CM_X = (min(GRID_X.values()) + max(GRID_X.values())) / 2  # ~19.25 m
-CM_Y = (min(GRID_Y.values()) + max(GRID_Y.values())) / 2  # ~6.91 m
+# Geometria de referencia basada en la huella real de losas
+AREA_PISO_TIPO = _panels_area(SLAB_PANELS_FLOOR)
+AREA_TECHO = _panels_area(SLAB_PANELS_ROOF)
+AREA_TOTAL_NIVELES = AREA_PISO_TIPO * (N_STORIES - 1) + AREA_TECHO
+AREA_PLANTA = AREA_TOTAL_NIVELES / N_STORIES
+AREA_ENVOLVENTE = LX_PLANTA * LY_PLANTA
 
-# Area de planta
-AREA_PLANTA = LX_PLANTA * LY_PLANTA  # ~532 m2
+# Centro geometrico de referencia del diafragma tipico
+CM_X, CM_Y = _panels_centroid(SLAB_PANELS_FLOOR)
+CM_X_TECHO, CM_Y_TECHO = _panels_centroid(SLAB_PANELS_ROOF)
 
 
 # ============================================================
@@ -359,10 +426,14 @@ def calc_R_star(Ro, T_star):
 
 
 if __name__ == '__main__':
-    print(f"Edificio 1 — {N_STORIES} pisos")
+    print(f"Edificio 1 - {N_STORIES} pisos")
     print(f"H total: {STORY_ELEVATIONS[-1]} m")
     print(f"Grilla: {len(GRID_X)} ejes X, {len(GRID_Y)} ejes Y")
-    print(f"Planta: {LX_PLANTA:.3f} x {LY_PLANTA:.3f} m ({AREA_PLANTA:.0f} m2)")
+    print(f"Planta envolvente: {LX_PLANTA:.3f} x {LY_PLANTA:.3f} m ({AREA_ENVOLVENTE:.0f} m2)")
+    print(f"Area piso tipo: {AREA_PISO_TIPO:.1f} m2")
+    print(f"Area techo: {AREA_TECHO:.1f} m2")
+    print(f"Area promedio nivel: {AREA_PLANTA:.1f} m2")
+    print(f"CM piso tipo: ({CM_X:.3f}, {CM_Y:.3f}) m")
     print(f"Muros dir Y: {len(MUROS_DIR_Y)}")
     print(f"Muros dir X: {len(MUROS_DIR_X)}")
     print(f"Vigas: {len(VIGAS)}")

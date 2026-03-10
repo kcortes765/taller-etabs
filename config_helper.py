@@ -54,6 +54,8 @@ UNIT_NAMES = {
 ETABS19_EXE = r"C:\Program Files\Computers and Structures\ETABS 19\ETABS.exe"
 ETABS19_TLB = r"C:\Program Files\Computers and Structures\ETABS 19\ETABSv1.tlb"
 AUTOSTART_WAIT_SECS = 25
+OPENFILE_VERIFY_RETRIES = 5
+OPENFILE_VERIFY_WAIT_SECS = 2
 
 # ====================================================================
 # PASO 1: Cargar type library de ETABS 19 EXPLICITAMENTE.
@@ -70,6 +72,13 @@ if os.path.exists(ETABS19_TLB):
 _helper_ref = None
 _etabs_obj = None
 _model = None
+
+
+def _clear_connection_cache():
+    global _helper_ref, _etabs_obj, _model
+    _helper_ref = None
+    _etabs_obj = None
+    _model = None
 
 
 def _test_model(m):
@@ -313,14 +322,16 @@ def get_model(retries=3, wait=5):
     """Conectar a ETABS 19 visible.
 
     Metodos en orden:
-    1. GetActiveObject — conecta al ETABS en el Running Object Table
-    2. Helper.GetObject(v19) — conecta al ETABS v19 ya corriendo
-    3. Si no hay ETABS visible, lanzar ETABS 19 y reintentar ambos metodos
+    1. GetActiveObject - conecta al ETABS en el Running Object Table
+    2. Si no hay ETABS visible, lanzar ETABS 19 y reintentar adjuntar
     """
     global _model, _etabs_obj, _helper_ref
 
     if _model is not None:
-        return _model
+        if _test_model(_model):
+            return _model
+        print("  [WARN] Conexion COM en cache ya no responde. Reintentando adjuntar...")
+        _clear_connection_cache()
 
     def _try_attach():
         last_error = None
@@ -333,20 +344,6 @@ def get_model(retries=3, wait=5):
                 return ('GetActiveObject', None, obj, m)
         except Exception as exc:
             last_error = exc
-
-        if os.path.exists(ETABS19_EXE):
-            try:
-                helper = comtypes.client.CreateObject('ETABSv1.Helper')
-                import comtypes.gen.ETABSv1 as ETABSv1
-                helper = helper.QueryInterface(ETABSv1.cHelper)
-                obj = helper.GetObject(ETABS19_EXE)
-                if obj is not None:
-                    m = obj.SapModel
-                    if _test_model(m):
-                        m.SetPresentUnits(TONF_M_C)
-                        return ('Helper.GetObject(v19)', helper, obj, m)
-            except Exception as exc:
-                last_error = exc
 
         return (None, None, None, last_error)
 
@@ -395,7 +392,7 @@ def get_model(retries=3, wait=5):
     print("  1. Cerrar TODO ETABS:  taskkill /F /IM ETABS.exe")
     print("  2. Abrir ETABS 19 manualmente (icono del escritorio)")
     print(f"  3. Esperar ~{AUTOSTART_WAIT_SECS}s hasta que cargue la ventana principal")
-    print("  4. python run_all.py")
+    print("  4. python run_all.py --fase 1")
     print("")
     print("  Si sigue fallando, registrar COM como admin:")
     print(f'  "{ETABS19_EXE}" /regserver')
@@ -410,3 +407,72 @@ def set_units_kgf_cm(m):
 def set_units_tonf_m(m):
     """Cambiar a tonf/m/C."""
     m.SetPresentUnits(TONF_M_C)
+
+
+def _model_filename_matches(m, filepath):
+    try:
+        current = m.GetModelFilename()
+    except Exception:
+        return False
+
+    if not current:
+        return False
+
+    current_norm = os.path.normcase(os.path.abspath(str(current)))
+    target_norm = os.path.normcase(os.path.abspath(filepath))
+    return current_norm == target_norm or os.path.basename(current_norm) == os.path.basename(target_norm)
+
+
+def open_file(m, filepath):
+    """Abrir un .edb existente en la instancia ETABS conectada.
+
+    Retorna True si el archivo se abrio correctamente, False si fallo.
+    El modelo sigue siendo el mismo objeto (m) — no se necesita reconectar.
+    """
+    filepath = os.path.abspath(filepath)
+    if not os.path.exists(filepath):
+        print(f"[ERROR] Archivo no existe: {filepath}")
+        print("  Ejecutar primero: python run_all.py --fase 1")
+        return False
+
+    unlock_model(m)
+    print(f"  Abriendo: {filepath}")
+    try:
+        ret = m.File.OpenFile(filepath)
+        code = _ret_code(ret)
+        print(f"  File.OpenFile: ret={ret}")
+        if code in (None, 0):
+            for _ in range(OPENFILE_VERIFY_RETRIES):
+                if _model_filename_matches(m, filepath):
+                    print(f"[OK] Modelo abierto: {os.path.basename(filepath)}")
+                    return True
+                time.sleep(OPENFILE_VERIFY_WAIT_SECS)
+            print("  [WARN] OpenFile no confirmo el archivo activo via GetModelFilename")
+        else:
+            print(f"  [WARN] OpenFile retorno {ret}")
+    except Exception as e:
+        print(f"  File.OpenFile: {e}")
+
+    print("[WARN] No se pudo abrir via API.")
+    print("  Opcion: abrir manualmente en ETABS y luego re-ejecutar paso 8+")
+    return False
+
+
+def close_etabs(save=False, wait=5):
+    """Cerrar la instancia ETABS conectada y limpiar cache COM local."""
+    global _etabs_obj
+
+    if _etabs_obj is None:
+        _clear_connection_cache()
+        return True
+
+    try:
+        ret = _etabs_obj.ApplicationExit(save)
+        print(f"  ApplicationExit(save={save}): ret={ret}")
+        time.sleep(wait)
+        _clear_connection_cache()
+        return True
+    except Exception as exc:
+        print(f"  [WARN] ApplicationExit fallo: {exc}")
+        _clear_connection_cache()
+        return False

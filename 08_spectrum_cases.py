@@ -91,19 +91,32 @@ def define_spectrum(m):
     except Exception as e:
         print(f"  FuncRS.SetUser(4 args): {e}")
 
-    # Intento 3: SetFromFile
-    try:
-        ret = m.Func.FuncRS.SetFromFile(name, spec_file, 1, 0, 1, 2, True)
-        if isinstance(ret, (list, tuple)):
-            code = ret[-1]
-        else:
-            code = ret
-        print(f"  FuncRS.SetFromFile: ret={ret}")
-        if code == 0:
-            print(f"[OK] Espectro definido desde archivo")
-            return True
-    except Exception as e:
-        print(f"  FuncRS.SetFromFile: {e}")
+    # Intento 3: SetFromFile — probar firmas posibles (de menor a mayor)
+    # Formato archivo: T(s) Sa(g) por linea, sin header.
+    # ValueType: 0=Period vs Value, 1=Frequency vs Value
+    setfromfile_variants = [
+        ('SetFromFile(name,file,0,0,damp)',
+         lambda: m.Func.FuncRS.SetFromFile(name, spec_file, 0, 0, damp)),
+        ('SetFromFile(name,file,0,0)',
+         lambda: m.Func.FuncRS.SetFromFile(name, spec_file, 0, 0)),
+        ('SetFromFile(name,file,0,0,False)',
+         lambda: m.Func.FuncRS.SetFromFile(name, spec_file, 0, 0, False)),
+        ('SetFromFile(name,file,0,1,damp)',
+         lambda: m.Func.FuncRS.SetFromFile(name, spec_file, 0, 1, damp)),
+    ]
+    for desc, func in setfromfile_variants:
+        try:
+            ret = func()
+            if isinstance(ret, (list, tuple)):
+                code = ret[-1]
+            else:
+                code = ret
+            print(f"  FuncRS.{desc}: ret={ret}")
+            if code == 0:
+                print(f"[OK] Espectro definido desde archivo")
+                return True
+        except Exception as e:
+            print(f"  FuncRS.{desc}: {e}")
 
     print("  [ERROR] No se pudo definir espectro via API")
     print("  >>> IMPORTAR MANUALMENTE:")

@@ -6,7 +6,7 @@
 Write-Host ""
 Write-Host "============================================================" -ForegroundColor Cyan
 Write-Host "  EDIFICIO 1 - 20 PISOS MUROS - TALLER ADSE 2026" -ForegroundColor Cyan
-Write-Host "  Flujo no interactivo: diagnostico -> pipeline -> resultados" -ForegroundColor Cyan
+Write-Host "  Flujo no interactivo: diagnostico -> pipeline estable -> resultados" -ForegroundColor Cyan
 Write-Host "============================================================" -ForegroundColor Cyan
 Write-Host ""
 
@@ -17,7 +17,7 @@ if ($LASTEXITCODE -ne 0) {
     exit 1
 }
 
-Write-Host "`n--- Paso 2: Pipeline completo ---" -ForegroundColor Yellow
+Write-Host "`n--- Paso 2: Pipeline estable (reinicia ETABS entre fases) ---" -ForegroundColor Yellow
 python run_all.py
 if ($LASTEXITCODE -ne 0) {
     Write-Host "run_all.py fallo. Revisar el log arriba." -ForegroundColor Red

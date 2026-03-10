@@ -4,55 +4,13 @@
 FIX v3: Verificacion post-creacion + RefreshView.
 """
 from config_helper import get_model, set_units_tonf_m, unlock_model, verify_elements, refresh_view
-from config import GRID_X, GRID_Y, LOSA_NAME, STORY_NAMES, STORY_ELEVATIONS
-
-# Panos de losa: (x1, y1, x2, y2) rectangulos en planta
-SLAB_PANELS = [
-    # Zona A-B (franja inferior, altura 0.701m)
-    (GRID_X['1'],  GRID_Y['A'], GRID_X['3'],  GRID_Y['B']),
-    (GRID_X['3'],  GRID_Y['A'], GRID_X['5'],  GRID_Y['B']),
-    (GRID_X['5'],  GRID_Y['A'], GRID_X['7'],  GRID_Y['B']),
-    (GRID_X['7'],  GRID_Y['A'], GRID_X['10'], GRID_Y['B']),
-    (GRID_X['10'], GRID_Y['A'], GRID_X['13'], GRID_Y['B']),
-    (GRID_X['13'], GRID_Y['A'], GRID_X['15'], GRID_Y['B']),
-    (GRID_X['15'], GRID_Y['A'], GRID_X['17'], GRID_Y['B']),
-
-    # Zona B-C (panos grandes)
-    (GRID_X['1'],  GRID_Y['B'], GRID_X['3'],  GRID_Y['C']),
-    (GRID_X['3'],  GRID_Y['B'], GRID_X['5'],  GRID_Y['C']),
-    (GRID_X['5'],  GRID_Y['B'], GRID_X['7'],  GRID_Y['C']),
-    (GRID_X['7'],  GRID_Y['B'], GRID_X['10'], GRID_Y['C']),
-    (GRID_X['10'], GRID_Y['B'], GRID_X['13'], GRID_Y['C']),
-    (GRID_X['13'], GRID_Y['B'], GRID_X['15'], GRID_Y['C']),
-    (GRID_X['15'], GRID_Y['B'], GRID_X['17'], GRID_Y['C']),
-
-    # Zona C-D
-    (GRID_X['1'],  GRID_Y['C'], GRID_X['3'],  GRID_Y['D']),
-    (GRID_X['3'],  GRID_Y['C'], GRID_X['5'],  GRID_Y['D']),
-    (GRID_X['5'],  GRID_Y['C'], GRID_X['7'],  GRID_Y['D']),
-    (GRID_X['7'],  GRID_Y['C'], GRID_X['10'], GRID_Y['D']),
-    (GRID_X['10'], GRID_Y['C'], GRID_X['13'], GRID_Y['D']),
-    (GRID_X['13'], GRID_Y['C'], GRID_X['15'], GRID_Y['D']),
-    (GRID_X['15'], GRID_Y['C'], GRID_X['17'], GRID_Y['D']),
-
-    # Zona D-E
-    (GRID_X['1'],  GRID_Y['D'], GRID_X['3'],  GRID_Y['E']),
-    (GRID_X['3'],  GRID_Y['D'], GRID_X['5'],  GRID_Y['E']),
-    (GRID_X['5'],  GRID_Y['D'], GRID_X['7'],  GRID_Y['E']),
-    (GRID_X['7'],  GRID_Y['D'], GRID_X['10'], GRID_Y['E']),
-    (GRID_X['10'], GRID_Y['D'], GRID_X['13'], GRID_Y['E']),
-    (GRID_X['13'], GRID_Y['D'], GRID_X['15'], GRID_Y['E']),
-    (GRID_X['15'], GRID_Y['D'], GRID_X['17'], GRID_Y['E']),
-
-    # Zona E-F
-    (GRID_X['1'],  GRID_Y['E'], GRID_X['3'],  GRID_Y['F']),
-    (GRID_X['3'],  GRID_Y['E'], GRID_X['5'],  GRID_Y['F']),
-    (GRID_X['5'],  GRID_Y['E'], GRID_X['7'],  GRID_Y['F']),
-    (GRID_X['7'],  GRID_Y['E'], GRID_X['10'], GRID_Y['F']),
-    (GRID_X['10'], GRID_Y['E'], GRID_X['13'], GRID_Y['F']),
-    (GRID_X['13'], GRID_Y['E'], GRID_X['15'], GRID_Y['F']),
-    (GRID_X['15'], GRID_Y['E'], GRID_X['17'], GRID_Y['F']),
-]
+from config import (
+    LOSA_NAME,
+    STORY_NAMES,
+    STORY_ELEVATIONS,
+    SLAB_PANELS_FLOOR,
+    SLAB_PANELS_ROOF,
+)
 
 
 def draw_slabs(m):
@@ -65,10 +23,18 @@ def draw_slabs(m):
     count = 0
     errors = 0
 
+    floor_panel_count = 0
+    roof_panel_count = 0
+
     for i, story in enumerate(STORY_NAMES):
         z = STORY_ELEVATIONS[i]
+        panels = SLAB_PANELS_ROOF if i == len(STORY_NAMES) - 1 else SLAB_PANELS_FLOOR
+        if i == len(STORY_NAMES) - 1:
+            roof_panel_count += len(panels)
+        else:
+            floor_panel_count += len(panels)
 
-        for x1, y1, x2, y2 in SLAB_PANELS:
+        for x1, y1, x2, y2 in panels:
             try:
                 result = m.AreaObj.AddByCoord(
                     4,
@@ -87,7 +53,12 @@ def draw_slabs(m):
                 if errors <= 3:
                     print(f"  [ERR] Losa {story}: {e}")
 
-    print(f"  API reporta: {count} losas creadas ({len(SLAB_PANELS)}/piso x {len(STORY_NAMES)} pisos)")
+    expected = floor_panel_count + roof_panel_count
+    print(
+        f"  API reporta: {count} losas creadas "
+        f"({len(SLAB_PANELS_FLOOR)}/piso tipo x {len(STORY_NAMES) - 1} + "
+        f"{len(SLAB_PANELS_ROOF)}/techo = {expected})"
+    )
     if errors:
         print(f"  [WARN] {errors} errores")
 

@@ -7,6 +7,8 @@ CRITICO: Sin mallado, los resultados son INVALIDOS para entrega:
 
 Intenta malla de 1.0m via API. Si falla, da instrucciones manuales exactas.
 """
+import os
+
 from config_helper import get_model, set_units_tonf_m, unlock_model, verify_elements
 
 # Tamano maximo de elemento (m)
@@ -129,6 +131,12 @@ def main():
         print(f"\n  [OK] AutoMesh aplicado: {ok}/{total} areas")
         if fail > 0:
             print(f"  [WARN] Fallaron: {fail} areas")
+        try:
+            edb_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'Edificio1.edb')
+            ret = m.File.Save(edb_path)
+            print(f"  File.Save post-mesh: ret={ret}")
+        except Exception as e:
+            print(f"  [WARN] No se pudo guardar post-mesh: {e}")
         print(f"\n  Verificar en ETABS:")
         print(f"    View > Show Model → activar 'Show Auto Mesh'")
         print(f"    Deberian verse cuadriculas de ~{MAX_MESH_SIZE}m en los muros")

@@ -14,7 +14,7 @@ from config import RO_MUROS, G_ACCEL, I_FACTOR, AREA_PLANTA, N_STORIES, calc_R_s
 # Qmin coefficient NCh433 art.6.3.3
 CMIN = 0.07
 # Peso sismico estimado (tonf) — se actualiza si se puede leer de ETABS
-W_ESTIMADO = AREA_PLANTA * N_STORIES * 1.0  # ~532 * 20 * 1.0 = 10640 tonf
+W_ESTIMADO = AREA_PLANTA * N_STORIES * 1.0  # ~468 * 20 * 1.0 = 9368 tonf (area huella real)
 
 
 def _looks_like_mode_sequence(values):
